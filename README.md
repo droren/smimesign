@@ -1,6 +1,10 @@
 # smimesign (S/MIME Sign)
 
-![PkgGoDev](https://pkg.go.dev/badge/github.com/github/smimesign?utm_source=godoc)
+![PkgGoDev](https://pkg.go.dev/badge/github.com/droren/smimesign?utm_source=godoc)
+
+This repository is a fork of [github/smimesign](https://github.com/github/smimesign)
+maintained at [droren/smimesign](https://github.com/droren/smimesign). It adds
+Linux support that is missing from the original project.
 
 Added simple update to code to cover : https://github.com/github/smimesign/pull/114 , i.e. build error on Windows for smime using go version > 1.17
 
@@ -10,9 +14,9 @@ This project is pre-1.0, meaning that APIs and functionality may change without 
 
 This package also contains reusable libraries in nested packages:
 
-- [`github.com/smimesign/certstore`](./certstore)
-- [`github.com/smimesign/fakeca`](./fakeca)
-- [`github.com/smimesign/ietf-cms`](./ietf-cms)
+- [`github.com/droren/smimesign/certstore`](./certstore)
+- [`github.com/droren/smimesign/fakeca`](./fakeca)
+- [`github.com/droren/smimesign/ietf-cms`](./ietf-cms)
 
 ## Repository layout
 
@@ -50,7 +54,7 @@ You can install `smimesign` using [Homebrew](https://brew.sh/):
 brew install smimesign
 ```
 
-You can also download a prebuilt macOS binary [here](https://github.com/github/smimesign/releases/latest). Put the binary on your `$PATH`, so Git will be able to find it.
+You can also download a prebuilt macOS binary [here](https://github.com/droren/smimesign/releases/latest). Put the binary on your `$PATH`, so Git will be able to find it.
 
 ### Windows
 
@@ -60,14 +64,14 @@ You can install `smimesign` using [`scoop`](https://github.com/lukesampson/scoop
 scoop install smimesign
 ```
 
-You can download prebuilt Windows binaries [here](https://github.com/github/smimesign/releases/latest). Put the appropriate binary on your `%PATH%`, so Git will be able to find it.
+You can download prebuilt Windows binaries [here](https://github.com/droren/smimesign/releases/latest). Put the appropriate binary on your `%PATH%`, so Git will be able to find it.
 
 ### Linux
 
 Linux builds are provided via the Go toolchain. Clone the repository and build the binary:
 
 ```bash
-git clone https://github.com/github/smimesign.git
+git clone https://github.com/droren/smimesign.git
 cd smimesign
 go build
 ```
@@ -84,7 +88,7 @@ export SMIMESIGN_P12_PASSWORD=yourpassword
 
 - Make sure you have the [Go compiler](https://golang.org/dl/) installed.
 - You'll probably want to put `$GOPATH/bin` on your `$PATH`.
-- Run `go get github.com/github/smimesign`
+- Run `go get github.com/droren/smimesign`
 
 ### Running tests on Linux
 
