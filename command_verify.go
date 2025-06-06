@@ -124,7 +124,7 @@ func verifyDetached() error {
 		f = stdin
 	} else {
 		if f, err = os.Open(fileArgs[1]); err != nil {
-			errors.Wrapf(err, "failed to open message file (%s)", fileArgs[1])
+			return errors.Wrapf(err, "failed to open message file (%s)", fileArgs[1])
 		}
 		defer f.Close()
 	}
