@@ -87,6 +87,7 @@ export SMIMESIGN_P12_PASSWORD=yourpassword
 ### Building from source
 
 - Make sure you have the [Go compiler](https://golang.org/dl/) installed.
+- Make sure that you have a gcc compiler setup in your path to compile embedded c in go files. 
 - You'll probably want to put `$GOPATH/bin` on your `$PATH`.
 - Run `go get github.com/droren/smimesign`
 
