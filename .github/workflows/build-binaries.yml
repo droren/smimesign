@@ -50,6 +50,44 @@ jobs:
         with:
           files: |
             build/macOS/smimesign-macos-${{ env.GIT_VERSION }}.tgz
+  build-linux:
+    strategy:
+      matrix:
+        go-version: ["1.23"]
+        os: [ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      CGO_ENABLED: 1
+    steps:
+      - name: Install Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: ${{ matrix.go-version }}
+      - name: Checkout code
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - name: Calculate git version and add it to the environment
+        shell: bash
+        run: |
+          echo "GIT_VERSION=$(git describe --tags)" >> $GITHUB_ENV
+      - name: Build linux binary
+        run: |
+          go build -o build/linux/smimesign -ldflags "-X main.versionString=${{ env.GIT_VERSION }}" .
+      - name: Tar the Linux binary
+        run: |
+          cd build/linux && tar -czvf smimesign-linux-${{ env.GIT_VERSION }}.tgz smimesign
+      - name: Upload build folder to the action
+        uses: actions/upload-artifact@v4
+        with:
+          name: build
+          path: build/
+      - name: Upload Linux files to the release
+        uses: softprops/action-gh-release@c062e08bd532815e2082a85e87e3ef29c3e6d191
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          files: |
+            build/linux/smimesign-linux-${{ env.GIT_VERSION }}.tgz
   build-windows:
     strategy:
       matrix:
