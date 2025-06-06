@@ -14,7 +14,7 @@
 #endif
 
 #define MyAppPublisher "GitHub, Inc."
-#define MyAppURL "https://github.com/github/smimesign"
+#define MyAppURL "https://github.com/droren/smimesign"
 #define MyAppFilePrefix "smimesign-windows"
 
 [Setup]
