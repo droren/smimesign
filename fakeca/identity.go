@@ -40,7 +40,8 @@ func (id *Identity) Issue(opts ...Option) *Identity {
 // PFX wraps the certificate and private key in an encrypted PKCS#12 packet. The
 // provided password must be alphanumeric.
 func (id *Identity) PFX(password string) []byte {
-	return toPFX(id.Certificate, id.PrivateKey, password)
+	// Include full chain when exporting so tests behave consistently
+	return toPFX(id.Certificate, id.PrivateKey, password, id.IssuerChain()...)
 }
 
 // Chain builds a slice of *x509.Certificate from this CA and its issuers.
@@ -50,6 +51,16 @@ func (id *Identity) Chain() []*x509.Certificate {
 		chain = append(chain, this.Certificate)
 	}
 
+	return chain
+}
+
+// IssuerChain returns the certificate chain for the issuers of this identity
+// excluding the identity's own certificate.
+func (id *Identity) IssuerChain() []*x509.Certificate {
+	var chain []*x509.Certificate
+	for this := id.Issuer; this != nil; this = this.Issuer {
+		chain = append(chain, this.Certificate)
+	}
 	return chain
 }
 
@@ -72,7 +83,7 @@ func (id *Identity) IncrementSN() int64 {
 	return id.NextSN
 }
 
-func toPFX(cert *x509.Certificate, priv interface{}, password string) []byte {
+func toPFX(cert *x509.Certificate, priv interface{}, password string, chain ...*x509.Certificate) []byte {
 	// only allow alphanumeric passwords
 	for _, c := range password {
 		switch {
@@ -87,7 +98,12 @@ func toPFX(cert *x509.Certificate, priv interface{}, password string) []byte {
 	passout := fmt.Sprintf("pass:%s", password)
 	cmd := exec.Command("openssl", "pkcs12", "-export", "-passout", passout)
 
-	cmd.Stdin = bytes.NewReader(append(append(toPKCS8(priv), '\n'), toPEM(cert)...))
+	pemData := append(append(toPKCS8(priv), '\n'), toPEM(cert)...)
+	for _, c := range chain {
+		pemData = append(pemData, toPEM(c)...)
+	}
+
+	cmd.Stdin = bytes.NewReader(pemData)
 
 	out := new(bytes.Buffer)
 	cmd.Stdout = out
