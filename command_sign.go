@@ -121,13 +121,27 @@ func findUserIdentity() (certstore.Identity, error) {
 		return nil, fmt.Errorf("bad user-id format: %s", *localUserOpt)
 	}
 
+	var matches []certstore.Identity
 	for _, ident := range idents {
 		if cert, err := ident.Certificate(); err == nil && (certHasEmail(cert, email) || certHasFingerprint(cert, fpr)) {
-			return ident, nil
+			matches = append(matches, ident)
 		}
 	}
 
-	return nil, nil
+	if len(matches) == 0 {
+		return nil, nil
+	}
+	if len(matches) > 1 {
+		var info []string
+		for _, ident := range matches {
+			if cert, err := ident.Certificate(); err == nil {
+				info = append(info, fmt.Sprintf("%s (%s)", cert.Subject.CommonName, certHexFingerprint(cert)))
+			}
+		}
+		return nil, fmt.Errorf("multiple identities match %q: %s", *localUserOpt, strings.Join(info, ", "))
+	}
+
+	return matches[0], nil
 }
 
 // certsForSignature determines which certificates to include in the signature
