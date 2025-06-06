@@ -79,7 +79,7 @@ jobs:
         # This is for InnoSetup
         shell: bash
         run: |
-          if [[ "${GIT_VERSION}" =~ ^v([[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+)(-[A-za-z0-9-]*)? ]]
+          if [[ "${GIT_VERSION}" =~ ^v?([[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+)(-[A-za-z0-9-]*)? ]]
           then
             echo "BARE_GIT_VERSION=${BASH_REMATCH[1]}" >> $GITHUB_ENV
           else
