@@ -4,7 +4,7 @@
 
 Added simple update to code to cover : https://github.com/github/smimesign/pull/114 , i.e. build error on Windows for smime using go version > 1.17
 
-Smimesign is an S/MIME signing utility for macOS and Windows that is compatible with Git. This allows developers to sign their Git commits and tags using X.509 certificates issued by public certificate authorities or their organization's internal certificate authority. Smimesign uses keys and certificates already stored in the _macOS Keychain_ or the _Windows Certificate Store_.
+Smimesign is an S/MIME signing utility for macOS, Windows, and Linux that is compatible with Git. This allows developers to sign their Git commits and tags using X.509 certificates issued by public certificate authorities or their organization's internal certificate authority. Smimesign uses keys and certificates already stored in the _macOS Keychain_, the _Windows Certificate Store_, or loaded from PKCS#12 files on Linux via the `SMIMESIGN_P12` environment variable.
 
 This project is pre-1.0, meaning that APIs and functionality may change without warning.
 
@@ -62,11 +62,50 @@ scoop install smimesign
 
 You can download prebuilt Windows binaries [here](https://github.com/github/smimesign/releases/latest). Put the appropriate binary on your `%PATH%`, so Git will be able to find it.
 
+### Linux
+
+Linux builds are provided via the Go toolchain. Clone the repository and build the binary:
+
+```bash
+git clone https://github.com/github/smimesign.git
+cd smimesign
+go build
+```
+
+To run `smimesign` on Linux, supply a PKCS#12 file containing your certificate and private key:
+
+```bash
+export SMIMESIGN_P12=/path/to/user.p12
+export SMIMESIGN_P12_PASSWORD=yourpassword
+./smimesign --list-keys
+```
+
 ### Building from source
 
 - Make sure you have the [Go compiler](https://golang.org/dl/) installed.
 - You'll probably want to put `$GOPATH/bin` on your `$PATH`.
 - Run `go get github.com/github/smimesign`
+
+### Running tests on Linux
+
+Execute the unit tests with the Go toolchain:
+
+```bash
+go test ./...
+```
+Ensure the `SMIMESIGN_P12` and `SMIMESIGN_P12_PASSWORD` variables point to a valid PKCS#12 file when running tests that require signing.
+
+### Creating test X.509 certificates
+
+You can create a PKCS#12 file for testing with OpenSSL:
+
+```bash
+openssl genrsa -out test.key 2048
+openssl req -new -x509 -key test.key -out test.crt -subj "/CN=testuser"
+openssl pkcs12 -export -inkey test.key -in test.crt -out test.p12 -passout pass:testpassword
+```
+
+Use `test.p12` with `SMIMESIGN_P12` and `testpassword` with `SMIMESIGN_P12_PASSWORD`.
 
 ## Configuring Git
 
