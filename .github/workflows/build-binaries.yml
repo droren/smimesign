@@ -96,6 +96,7 @@ jobs:
         with:
           platform: x86
           static: 0
+          cc: 0
       - name: Build 386
         shell: bash
         run: |
