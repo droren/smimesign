@@ -95,6 +95,7 @@ jobs:
         uses: egor-tensin/setup-mingw@84c781b557efd538dec66bde06988d81cd3138cf
         with:
           platform: x86
+          static: 0
       - name: Build 386
         shell: bash
         run: |
