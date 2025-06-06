@@ -14,6 +14,20 @@ This package also contains reusable libraries in nested packages:
 - [`github.com/smimesign/fakeca`](./fakeca)
 - [`github.com/smimesign/ietf-cms`](./ietf-cms)
 
+## Repository layout
+
+The root directory contains the command line application. Important files and
+folders include:
+
+- `main.go` – entry point and flag parsing for the CLI
+- `command_sign.go` / `command_verify.go` – signing and verification commands
+- `list_keys_command.go` – shows available certificates
+- `certstore/` – cross‑platform access to the system certificate stores
+- `ietf-cms/` – implementation of the Cryptographic Message Syntax used for
+  signatures
+- `fakeca/` – helpers for generating test certificates
+- `windows-installer/` – resources for building the Windows installer
+
 ## Contributing
 
 Different organizations do PKI differently and we weren't able to test everyone's setup. Contributions making this tool work better for your organization are welcome. See the [contributing docs](CONTRIBUTING.md) for more information on how to get involved.
@@ -104,6 +118,21 @@ $ git config --get user.email
 
 ```bash
 $ smimesign --list-keys
+```
+
+## Usage
+
+The `smimesign` command has three primary modes:
+
+- `--sign`     – create a signature for a file
+- `--verify`   – verify a signature
+- `--list-keys` – list available certificates
+
+Example of creating a detached signature and verifying it:
+
+```bash
+$ smimesign --sign -u user@example.com -b file.txt > file.txt.sig
+$ smimesign --verify file.txt.sig file.txt
 ```
 
 ## Smart cards (PIV/CAC/Yubikey)
