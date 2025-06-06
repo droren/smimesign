@@ -185,10 +185,17 @@ func chainWithoutRoot(chain []*x509.Certificate) []*x509.Certificate {
 	}
 
 	lastIdx := len(chain) - 1
-	last := chain[lastIdx]
 
-	if bytes.Equal(last.RawIssuer, last.RawSubject) {
-		return chain[0:lastIdx]
+	// If there is more than one certificate and the last certificate is
+	// self-signed, drop it from the returned chain. When a single
+	// self-signed certificate is provided we keep it so the signature still
+	// contains the signing certificate.
+	if len(chain) > 1 {
+		last := chain[lastIdx]
+
+		if bytes.Equal(last.RawIssuer, last.RawSubject) {
+			return chain[0:lastIdx]
+		}
 	}
 
 	return chain
