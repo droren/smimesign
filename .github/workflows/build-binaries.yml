@@ -103,6 +103,7 @@ jobs:
         env:
           CC: ${{ steps.mingw32.outputs.gcc }}
           CXX: ${{ steps.mingw32.outputs.gxx }}
+          PATH: C:\ProgramData\mingw64\mingw32\bin;${{ env.PATH }}
         run: |
           GOARCH=386 go build -o "build/386/smimesign.exe" -ldflags "-X main.versionString=${{ env.GIT_VERSION }}" .
       - name: Sign amd64 and 386
