@@ -176,19 +176,26 @@ func certsForSignature(chain []*x509.Certificate) ([]*x509.Certificate, error) {
 	}
 }
 
-// Returns the provided chain, having removed the root certificate, if present.
-// This includes removing the cert itself if the chain is a single self-signed
-// cert.
+// Returns the provided certificate chain without a root certificate, when
+// present. A single self-signed certificate is kept so that the signature
+// continues to embed the signing certificate.
 func chainWithoutRoot(chain []*x509.Certificate) []*x509.Certificate {
 	if len(chain) == 0 {
 		return chain
 	}
 
 	lastIdx := len(chain) - 1
-	last := chain[lastIdx]
 
-	if bytes.Equal(last.RawIssuer, last.RawSubject) {
-		return chain[0:lastIdx]
+	// If there is more than one certificate and the last certificate is
+	// self-signed, drop it from the returned chain. When a single
+	// self-signed certificate is provided we keep it so the signature still
+	// contains the signing certificate.
+	if len(chain) > 1 {
+		last := chain[lastIdx]
+
+		if bytes.Equal(last.RawIssuer, last.RawSubject) {
+			return chain[0:lastIdx]
+		}
 	}
 
 	return chain

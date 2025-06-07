@@ -4,6 +4,7 @@ import (
 	"crypto/x509"
 	"testing"
 
+	"github.com/github/smimesign/certstore"
 	cms "github.com/github/smimesign/ietf-cms"
 	"github.com/github/smimesign/ietf-cms/protocol"
 	"github.com/stretchr/testify/require"
@@ -228,4 +229,26 @@ func TestSignIncludeCerts4(t *testing.T) {
 	require.True(t, chainContains(certs, leaf.Certificate))
 	require.True(t, chainContains(certs, intermediate.Certificate))
 	require.True(t, chainContains(certs, ca.Certificate))
+}
+
+func TestSignSelfSignedIncluded(t *testing.T) {
+	defer testSetup(t, "--sign", "-u", certHexFingerprint(ca.Certificate))()
+
+	// Only use the self-signed certificate as the available identity.
+	idents = []certstore.Identity{identity{ca}}
+
+	stdinBuf.WriteString("hello")
+	require.NoError(t, commandSign())
+
+	sd, err := cms.ParseSignedData(stdoutBuf.Bytes())
+	require.NoError(t, err)
+
+	certs, err := sd.GetCertificates()
+	require.NoError(t, err)
+
+	require.Equal(t, 1, len(certs))
+	require.True(t, certs[0].Equal(ca.Certificate))
+
+	_, err = sd.Verify(x509.VerifyOptions{Roots: ca.ChainPool()})
+	require.NoError(t, err)
 }
