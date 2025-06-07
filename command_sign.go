@@ -176,9 +176,9 @@ func certsForSignature(chain []*x509.Certificate) ([]*x509.Certificate, error) {
 	}
 }
 
-// Returns the provided chain, having removed the root certificate, if present.
-// This includes removing the cert itself if the chain is a single self-signed
-// cert.
+// Returns the provided certificate chain without a root certificate, when
+// present. A single self-signed certificate is kept so that the signature
+// continues to embed the signing certificate.
 func chainWithoutRoot(chain []*x509.Certificate) []*x509.Certificate {
 	if len(chain) == 0 {
 		return chain
