@@ -1,0 +1,16 @@
+name: smimesign
+arch: amd64
+platform: linux
+version: ${VERSION}
+section: default
+priority: extra
+maintainer: GitHub <support@github.com>
+description: |
+  Smimesign is an S/MIME signing utility for Git.
+vendor: GitHub
+homepage: https://github.com/droren/smimesign
+license: MIT
+contents:
+  - src: ./build/linux/smimesign
+    dst: /usr/bin/smimesign
+    type: file

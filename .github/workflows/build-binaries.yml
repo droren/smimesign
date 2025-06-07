@@ -71,9 +71,25 @@ jobs:
         shell: bash
         run: |
           echo "GIT_VERSION=$(git describe --tags)" >> $GITHUB_ENV
+      - name: Calculate bare git version and add it to the environment
+        shell: bash
+        run: |
+          if [[ "${GIT_VERSION}" =~ ^v?([[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+)(-[A-za-z0-9-]*)? ]]; then
+            echo "BARE_GIT_VERSION=${BASH_REMATCH[1]}" >> $GITHUB_ENV
+          else
+            echo "Could not calculate the bare git version for: ${GIT_VERSION}"
+            exit 1
+          fi
       - name: Build linux binary
         run: |
           go build -o build/linux/smimesign -ldflags "-X main.versionString=${{ env.GIT_VERSION }}" .
+      - name: Install nfpm
+        run: |
+          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
+          echo "${HOME}/go/bin" >> $GITHUB_PATH
+      - name: Build RPM package
+        run: |
+          VERSION=${{ env.BARE_GIT_VERSION }} nfpm package -p rpm --target build/linux/smimesign-${{ env.BARE_GIT_VERSION }}-1.x86_64.rpm
       - name: Tar the Linux binary
         run: |
           cd build/linux && tar -czvf smimesign-linux-${{ env.GIT_VERSION }}.tgz smimesign
@@ -88,6 +104,7 @@ jobs:
         with:
           files: |
             build/linux/smimesign-linux-${{ env.GIT_VERSION }}.tgz
+            build/linux/smimesign-${{ env.BARE_GIT_VERSION }}-1.x86_64.rpm
   build-windows:
     strategy:
       matrix:
