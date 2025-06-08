@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"unsafe"
 )
 
@@ -43,39 +44,57 @@ func openStore() (macStore, error) {
 
 // Identities implements the Store interface.
 func (s macStore) Identities() ([]Identity, error) {
-	query := mapToCFDictionary(map[C.CFTypeRef]C.CFTypeRef{
-		C.CFTypeRef(C.kSecClass):      C.CFTypeRef(C.kSecClassIdentity),
-		C.CFTypeRef(C.kSecReturnRef):  C.CFTypeRef(C.kCFBooleanTrue),
-		C.CFTypeRef(C.kSecMatchLimit): C.CFTypeRef(C.kSecMatchLimitAll),
-	})
-	if query == nilCFDictionaryRef {
-		return nil, errors.New("error creating CFDictionary")
-	}
-	defer C.CFRelease(C.CFTypeRef(query))
-
-	var absResult C.CFTypeRef
-	if err := osStatusError(C.SecItemCopyMatching(query, &absResult)); err != nil {
-		if err == errSecItemNotFound {
-			return []Identity{}, nil
+	fetch := func() ([]Identity, error) {
+		query := mapToCFDictionary(map[C.CFTypeRef]C.CFTypeRef{
+			C.CFTypeRef(C.kSecClass):      C.CFTypeRef(C.kSecClassIdentity),
+			C.CFTypeRef(C.kSecReturnRef):  C.CFTypeRef(C.kCFBooleanTrue),
+			C.CFTypeRef(C.kSecMatchLimit): C.CFTypeRef(C.kSecMatchLimitAll),
+		})
+		if query == nilCFDictionaryRef {
+			return nil, errors.New("error creating CFDictionary")
 		}
+		defer C.CFRelease(C.CFTypeRef(query))
 
+		var absResult C.CFTypeRef
+		if err := osStatusError(C.SecItemCopyMatching(query, &absResult)); err != nil {
+			if err == errSecItemNotFound {
+				return []Identity{}, nil
+			}
+
+			return nil, err
+		}
+		defer C.CFRelease(C.CFTypeRef(absResult))
+
+		aryResult := C.CFArrayRef(absResult)
+
+		n := C.CFArrayGetCount(aryResult)
+		identRefs := make([]C.CFTypeRef, n)
+		C.CFArrayGetValues(aryResult, C.CFRange{0, n}, (*unsafe.Pointer)(unsafe.Pointer(&identRefs[0])))
+
+		idents := make([]Identity, 0, n)
+		for _, identRef := range identRefs {
+			idents = append(idents, newMacIdentity(C.SecIdentityRef(identRef)))
+		}
+		return idents, nil
+	}
+
+	idents, err := fetch()
+	if err != nil {
 		return nil, err
 	}
-	defer C.CFRelease(C.CFTypeRef(absResult))
-
-	// don't need to release aryResult since the abstract result is released above.
-	aryResult := C.CFArrayRef(absResult)
-
-	// identRefs aren't owned by us initially. newMacIdentity retains them.
-	n := C.CFArrayGetCount(aryResult)
-	identRefs := make([]C.CFTypeRef, n)
-	C.CFArrayGetValues(aryResult, C.CFRange{0, n}, (*unsafe.Pointer)(unsafe.Pointer(&identRefs[0])))
-
-	idents := make([]Identity, 0, n)
-	for _, identRef := range identRefs {
-		idents = append(idents, newMacIdentity(C.SecIdentityRef(identRef)))
+	if len(idents) == 0 {
+		if path := os.Getenv("SMIMESIGN_P12"); path != "" {
+			password := os.Getenv("SMIMESIGN_P12_PASSWORD")
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return nil, err
+			}
+			if err := s.Import(data, password); err != nil {
+				return nil, err
+			}
+			return fetch()
+		}
 	}
-
 	return idents, nil
 }
 

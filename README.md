@@ -8,7 +8,7 @@ Linux support that is missing from the original project.
 
 Added simple update to code to cover : https://github.com/github/smimesign/pull/114 , i.e. build error on Windows for smime using go version > 1.17
 
-Smimesign is an S/MIME signing utility for macOS, Windows, and Linux that is compatible with Git. This allows developers to sign their Git commits and tags using X.509 certificates issued by public certificate authorities or their organization's internal certificate authority. Smimesign uses keys and certificates already stored in the _macOS Keychain_, the _Windows Certificate Store_, or loaded from PKCS#12 files on Linux via the `SMIMESIGN_P12` environment variable.
+Smimesign is an S/MIME signing utility for macOS, Windows, and Linux that is compatible with Git. This allows developers to sign their Git commits and tags using X.509 certificates issued by public certificate authorities or their organization's internal certificate authority. Smimesign uses keys and certificates already stored in the _macOS Keychain_ or the _Windows Certificate Store_. If a certificate isn't found, or when running on Linux, a PKCS#12 file can be loaded via the `SMIMESIGN_P12` environment variable.
 
 This project is pre-1.0, meaning that APIs and functionality may change without warning.
 
@@ -76,7 +76,7 @@ cd smimesign
 go build
 ```
 
-To run `smimesign` on Linux, supply a PKCS#12 file containing your certificate and private key:
+To run `smimesign`, supply a PKCS#12 file containing your certificate and private key. On macOS and Windows this is only required when the certificate isn't already in the system store:
 
 ```bash
 export SMIMESIGN_P12=/path/to/user.p12
@@ -91,7 +91,7 @@ export SMIMESIGN_P12_PASSWORD=yourpassword
 - You'll probably want to put `$GOPATH/bin` on your `$PATH`.
 - Run `go get github.com/droren/smimesign`
 
-### Running tests on Linux
+### Running tests
 
 Execute the unit tests with the Go toolchain:
 
