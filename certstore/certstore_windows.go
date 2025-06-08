@@ -39,6 +39,7 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"os"
 	"unicode/utf16"
 	"unsafe"
 
@@ -64,10 +65,11 @@ const (
 // API will be used.
 //
 // Possible values are:
-//   0x00000000 —                                      — Only use CryptoAPI.
-//   0x00010000 — CRYPT_ACQUIRE_ALLOW_NCRYPT_KEY_FLAG  — Prefer CryptoAPI.
-//   0x00020000 — CRYPT_ACQUIRE_PREFER_NCRYPT_KEY_FLAG — Prefer CNG.
-//   0x00040000 — CRYPT_ACQUIRE_ONLY_NCRYPT_KEY_FLAG   — Only uyse CNG.
+//
+//	0x00000000 —                                      — Only use CryptoAPI.
+//	0x00010000 — CRYPT_ACQUIRE_ALLOW_NCRYPT_KEY_FLAG  — Prefer CryptoAPI.
+//	0x00020000 — CRYPT_ACQUIRE_PREFER_NCRYPT_KEY_FLAG — Prefer CNG.
+//	0x00040000 — CRYPT_ACQUIRE_ONLY_NCRYPT_KEY_FLAG   — Only uyse CNG.
 var winAPIFlag C.DWORD = C.CRYPT_ACQUIRE_PREFER_NCRYPT_KEY_FLAG
 
 // winStore is a wrapper around a C.HCERTSTORE.
@@ -90,62 +92,74 @@ func openStore() (*winStore, error) {
 
 // Identities implements the Store interface.
 func (s *winStore) Identities() ([]Identity, error) {
-	var (
-		err    error
-		idents = []Identity{}
+	fetch := func() ([]Identity, error) {
+		var (
+			err    error
+			idents = []Identity{}
 
-		// CertFindChainInStore parameters
-		encoding  = C.DWORD(C.X509_ASN_ENCODING)
-		flags     = C.DWORD(C.CERT_CHAIN_FIND_BY_ISSUER_CACHE_ONLY_FLAG | C.CERT_CHAIN_FIND_BY_ISSUER_CACHE_ONLY_URL_FLAG)
-		findType  = C.DWORD(C.CERT_CHAIN_FIND_BY_ISSUER)
-		params    = &C.CERT_CHAIN_FIND_BY_ISSUER_PARA{cbSize: C.DWORD(unsafe.Sizeof(C.CERT_CHAIN_FIND_BY_ISSUER_PARA{}))}
-		paramsPtr = unsafe.Pointer(params)
-		chainCtx  = C.PCCERT_CHAIN_CONTEXT(nil)
-	)
+			encoding  = C.DWORD(C.X509_ASN_ENCODING)
+			flags     = C.DWORD(C.CERT_CHAIN_FIND_BY_ISSUER_CACHE_ONLY_FLAG | C.CERT_CHAIN_FIND_BY_ISSUER_CACHE_ONLY_URL_FLAG)
+			findType  = C.DWORD(C.CERT_CHAIN_FIND_BY_ISSUER)
+			params    = &C.CERT_CHAIN_FIND_BY_ISSUER_PARA{cbSize: C.DWORD(unsafe.Sizeof(C.CERT_CHAIN_FIND_BY_ISSUER_PARA{}))}
+			paramsPtr = unsafe.Pointer(params)
+			chainCtx  = C.PCCERT_CHAIN_CONTEXT(nil)
+		)
 
-	for {
-		if chainCtx = C.CertFindChainInStore(s.store, encoding, flags, findType, paramsPtr, chainCtx); chainCtx == nil {
-			break
+		for {
+			if chainCtx = C.CertFindChainInStore(s.store, encoding, flags, findType, paramsPtr, chainCtx); chainCtx == nil {
+				break
+			}
+			if chainCtx.cChain < 1 {
+				err = errors.New("bad chain")
+				goto fail
+			}
+
+			// not sure why this isn't 1 << 29
+			const maxPointerArray = 1 << 28
+
+			// rgpChain is actually an array, but we only care about the first one.
+			simpleChain := *chainCtx.rgpChain
+			if simpleChain.cElement < 1 || simpleChain.cElement > maxPointerArray {
+				err = errors.New("bad chain")
+				goto fail
+			}
+
+			// Hacky way to get chain elements (c array) as a slice.
+			chainElts := (*[maxPointerArray]C.PCERT_CHAIN_ELEMENT)(unsafe.Pointer(simpleChain.rgpElement))[:simpleChain.cElement:simpleChain.cElement]
+
+			// Build chain of certificates from each elt's certificate context.
+			chain := make([]C.PCCERT_CONTEXT, len(chainElts))
+			for j := range chainElts {
+				chain[j] = chainElts[j].pCertContext
+			}
+
+			idents = append(idents, newWinIdentity(chain))
 		}
-		if chainCtx.cChain < 1 {
-			err = errors.New("bad chain")
+
+		if err = checkError("failed to iterate certs in store"); err != nil && errors.Cause(err) != errCode(CRYPT_E_NOT_FOUND) {
 			goto fail
 		}
 
-		// not sure why this isn't 1 << 29
-		const maxPointerArray = 1 << 28
+		return idents, nil
 
-		// rgpChain is actually an array, but we only care about the first one.
-		simpleChain := *chainCtx.rgpChain
-		if simpleChain.cElement < 1 || simpleChain.cElement > maxPointerArray {
-			err = errors.New("bad chain")
-			goto fail
+	fail:
+		for _, ident := range idents {
+			ident.Close()
 		}
 
-		// Hacky way to get chain elements (c array) as a slice.
-		chainElts := (*[maxPointerArray]C.PCERT_CHAIN_ELEMENT)(unsafe.Pointer(simpleChain.rgpElement))[:simpleChain.cElement:simpleChain.cElement]
-
-		// Build chain of certificates from each elt's certificate context.
-		chain := make([]C.PCCERT_CONTEXT, len(chainElts))
-		for j := range chainElts {
-			chain[j] = chainElts[j].pCertContext
+		return nil, err
+	}
+	idents, err := fetch()
+	if err != nil {
+		return nil, err
+	}
+	if len(idents) == 0 {
+		if err := importPKCS12FromEnv(s.Import); err != nil {
+			return nil, err
 		}
-
-		idents = append(idents, newWinIdentity(chain))
+		return fetch()
 	}
-
-	if err = checkError("failed to iterate certs in store"); err != nil && errors.Cause(err) != errCode(CRYPT_E_NOT_FOUND) {
-		goto fail
-	}
-
 	return idents, nil
-
-fail:
-	for _, ident := range idents {
-		ident.Close()
-	}
-
-	return nil, err
 }
 
 // Import implements the Store interface.
