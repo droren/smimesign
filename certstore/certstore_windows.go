@@ -154,17 +154,10 @@ func (s *winStore) Identities() ([]Identity, error) {
 		return nil, err
 	}
 	if len(idents) == 0 {
-		if path := os.Getenv("SMIMESIGN_P12"); path != "" {
-			password := os.Getenv("SMIMESIGN_P12_PASSWORD")
-			data, err := os.ReadFile(path)
-			if err != nil {
-				return nil, err
-			}
-			if err := s.Import(data, password); err != nil {
-				return nil, err
-			}
-			return fetch()
+		if err := importPKCS12FromEnv(s.Import); err != nil {
+			return nil, err
 		}
+		return fetch()
 	}
 	return idents, nil
 }
