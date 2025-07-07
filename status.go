@@ -8,9 +8,18 @@ import (
 	"os"
 	"sync"
 	"time"
+)
 
-	"golang.org/x/crypto/openpgp/packet"
-	"golang.org/x/crypto/openpgp/s2k"
+const (
+	// OpenPGP Public Key Algorithms (RFC 4880, Section 9.1)
+	opgpPubKeyAlgoRSA byte = 1 // RSA (Encrypt or Sign)
+	opgpPubKeyAlgoECDSA byte = 19 // ECDSA
+
+	// OpenPGP Hash Algorithms (RFC 4880, Section 9.4)
+	opgpHashAlgoSHA1 byte = 2 // SHA1
+	opgpHashAlgoSHA256 byte = 8 // SHA256
+	opgpHashAlgoSHA384 byte = 9 // SHA384
+	opgpHashAlgoSHA512 byte = 10 // SHA512
 )
 
 // This file implements gnupg's "status protocol". When the --status-fd argument
@@ -180,20 +189,20 @@ func emitSigCreated(cert *x509.Certificate, isDetached bool) {
 
 	switch cert.SignatureAlgorithm {
 	case x509.SHA1WithRSA, x509.SHA256WithRSA, x509.SHA384WithRSA, x509.SHA512WithRSA:
-		pkAlgo = byte(packet.PubKeyAlgoRSA)
+		pkAlgo = opgpPubKeyAlgoRSA
 	case x509.ECDSAWithSHA1, x509.ECDSAWithSHA256, x509.ECDSAWithSHA384, x509.ECDSAWithSHA512:
-		pkAlgo = byte(packet.PubKeyAlgoECDSA)
+		pkAlgo = opgpPubKeyAlgoECDSA
 	}
 
 	switch cert.SignatureAlgorithm {
 	case x509.SHA1WithRSA, x509.ECDSAWithSHA1:
-		hashAlgo, _ = s2k.HashToHashId(crypto.SHA1)
+		hashAlgo = opgpHashAlgoSHA1
 	case x509.SHA256WithRSA, x509.ECDSAWithSHA256:
-		hashAlgo, _ = s2k.HashToHashId(crypto.SHA256)
+		hashAlgo = opgpHashAlgoSHA256
 	case x509.SHA384WithRSA, x509.ECDSAWithSHA384:
-		hashAlgo, _ = s2k.HashToHashId(crypto.SHA384)
+		hashAlgo = opgpHashAlgoSHA384
 	case x509.SHA512WithRSA, x509.ECDSAWithSHA512:
-		hashAlgo, _ = s2k.HashToHashId(crypto.SHA512)
+		hashAlgo = opgpHashAlgoSHA512
 	}
 
 	// gpgsm seems to always use 0x00
