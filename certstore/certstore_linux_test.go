@@ -2,12 +2,11 @@ package certstore
 
 import (
 	"crypto"
+	"crypto/ecdsa"
 	"crypto/rand"
-	"crypto/x509"
+	"crypto/rsa"
 	"os"
 	"testing"
-
-	"github.com/github/smimesign/fakeca"
 )
 
 // TestPKCS11Signer tests the PKCS#11 signer implementation.
