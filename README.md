@@ -26,6 +26,7 @@ folders include:
 - `main.go` – entry point and flag parsing for the CLI
 - `command_sign.go` / `command_verify.go` – signing and verification commands
 - `list_keys_command.go` – shows available certificates
+- `command_list_smartcard_keys.go` – shows available smartcard certificates
 - `certstore/` – cross‑platform access to the system certificate stores
 - `ietf-cms/` – implementation of the Cryptographic Message Syntax used for
   signatures
@@ -76,13 +77,23 @@ cd smimesign
 go build
 ```
 
-To run `smimesign`, supply a PKCS#12 file containing your certificate and private key. On macOS and Windows this is only required when the certificate isn't already in the system store:
+To run `smimesign` with a PKCS#12 file (software-based key), supply the file containing your certificate and private key. On macOS and Windows this is only required when the certificate isn't already in the system store:
 
 ```bash
 export SMIMESIGN_P12=/path/to/user.p12
 export SMIMESIGN_P12_PASSWORD=yourpassword
 ./smimesign --list-keys
 ```
+
+To run `smimesign` with a smart card (hardware-based key) on Linux, you need a PKCS#11 driver for your smart card (e.g., OpenSC). Set the `SMIMESIGN_PKCS11_MODULE` environment variable to the path of the driver's `.so` file and `SMIMESIGN_PKCS11_PIN` to your smart card's PIN:
+
+```bash
+export SMIMESIGN_PKCS11_MODULE=/usr/lib/x86_64-linux-gnu/opensc-pkcs11.so
+export SMIMESIGN_PKCS11_PIN=your_smartcard_pin
+./smimesign --list-smartcard-keys
+```
+**Note:** Replace `/usr/lib/x86_64-linux-gnu/opensc-pkcs11.so` with the actual path to your PKCS#11 module. You may need to install `opensc` or other smart card middleware for this to work.
+
 
 ### Building from source
 
@@ -170,7 +181,8 @@ The `smimesign` command has three primary modes:
 
 - `--sign`     – create a signature for a file
 - `--verify`   – verify a signature
-- `--list-keys` – list available certificates
+- `--list-keys` – list available certificates (from PKCS#12 files)
+- `--list-smartcard-keys` – list available certificates from smart cards (PKCS#11)
 
 Example of creating a detached signature and verifying it:
 

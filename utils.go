@@ -17,9 +17,14 @@ func normalizeFingerprint(sfpr string) []byte {
 		return nil
 	}
 
-	if strings.HasPrefix(sfpr, "0x") {
-		sfpr = sfpr[2:]
-	}
+    // Allow both lowercase and uppercase 0x/0X prefixes – match is
+    // performed in a case-insensitive manner to better mirror how tooling
+    // such as GnuPG treats fingerprint prefixes.
+    if len(sfpr) >= 2 && sfpr[0] == '0' {
+        if sfpr[1] == 'x' || sfpr[1] == 'X' {
+            sfpr = sfpr[2:]
+        }
+    }
 
 	hfpr, err := hex.DecodeString(sfpr)
 	if err != nil {
