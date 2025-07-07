@@ -53,8 +53,8 @@ func openStore() (Store, error) {
             // The PIN is required to view objects on the token
             // The PIN is required to view objects on the token
             if err := p11ctx.Login(session, pkcs11.CKU_USER, pin); err != nil {
-                // Check if the error is specifically CKR_USER_NOT_LOGGED_IN
-                if err == pkcs11.CKR_USER_NOT_LOGGED_IN {
+                var pkcs11Error pkcs11.Error
+                if errors.As(err, &pkcs11Error) && pkcs11Error == pkcs11.CKR_USER_NOT_LOGGED_IN {
                     // Some tokens don't require a PIN, or the user might have already logged in.
                     // Continue without returning an error for this specific case.
                     fmt.Fprintf(os.Stderr, "Warning: PKCS#11 login for slot %d failed with CKR_USER_NOT_LOGGED_IN. Continuing without PIN for this slot.\n", slot)
