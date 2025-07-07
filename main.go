@@ -26,7 +26,8 @@ var (
 	versionFlag  = getopt.BoolLong("version", 'v', "print the version number")
 	signFlag     = getopt.BoolLong("sign", 's', "make a signature")
 	verifyFlag   = getopt.BoolLong("verify", 0, "verify a signature")
-	listKeysFlag = getopt.BoolLong("list-keys", 0, "show keys")
+	listKeysFlag       = getopt.BoolLong("list-keys", 0, "show keys")
+	listSmartcardKeysFlag = getopt.BoolLong("list-smartcard-keys", 0, "show smartcard keys")
 
 	// Option flags
 	localUserOpt    = getopt.StringLong("local-user", 'u', "", "use USER-ID to sign", "USER-ID")
@@ -113,8 +114,8 @@ func runCommand() error {
 	}
 
 	if *listKeysFlag {
-		if *signFlag || *verifyFlag {
-			return errors.New("specify --help, --sign, --verify, or --list-keys")
+		if *signFlag || *verifyFlag || *listSmartcardKeysFlag {
+			return errors.New("specify --help, --sign, --verify, --list-keys, or --list-smartcard-keys")
 		} else if len(*localUserOpt) > 0 {
 			return errors.New("local-user cannot be specified for list-keys")
 		} else if *detachSignFlag {
@@ -123,6 +124,20 @@ func runCommand() error {
 			return errors.New("armor cannot be specified for list-keys")
 		} else {
 			return commandListKeys()
+		}
+	}
+
+	if *listSmartcardKeysFlag {
+		if *signFlag || *verifyFlag || *listKeysFlag {
+			return errors.New("specify --help, --sign, --verify, --list-keys, or --list-smartcard-keys")
+		} else if len(*localUserOpt) > 0 {
+			return errors.New("local-user cannot be specified for list-smartcard-keys")
+		} else if *detachSignFlag {
+			return errors.New("detach-sign cannot be specified for list-smartcard-keys")
+		} else if *armorFlag {
+			return errors.New("armor cannot be specified for list-smartcard-keys")
+		} else {
+			return commandListSmartcardKeys()
 		}
 	}
 
