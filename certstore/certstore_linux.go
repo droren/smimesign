@@ -331,7 +331,7 @@ func parsePKCS12(data []byte, password string) (interface{}, *x509.Certificate, 
 				key = pk
 			}
 		}
-		case "CERTIFICATE":
+				case "CERTIFICATE":
 			if c, err := x509.ParseCertificate(block.Bytes); err == nil {
 				certs = append(certs, c)
 			}
