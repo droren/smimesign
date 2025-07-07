@@ -41,22 +41,29 @@ func openStore() (Store, error) {
 		}
 
 		for _, slot := range slots {
-			// The PIN is required to view objects on the token
-			if err := p11ctx.Login(slot, pin); err != nil {
-				// Some tokens don't require a PIN
-				if err != pkcs11.CKR_USER_NOT_LOGGED_IN {
-					p11ctx.Destroy()
-					p11ctx.Finalize()
-					return nil, fmt.Errorf("failed to log in to PKCS#11 slot: %w", err)
-				}
-			}
+            session, err := p11ctx.OpenSession(slot, pkcs11.CKF_SERIAL_SESSION)
+            if err != nil {
+                p11ctx.Destroy()
+                p11ctx.Finalize()
+                return nil, fmt.Errorf("failed to open PKCS#11 session for slot %d: %w", slot, err)
+            }
+            // Defer closing the session for each slot
+            defer p11ctx.CloseSession(session)
 
-			session, err := p11ctx.OpenSession(slot, pkcs11.CKF_SERIAL_SESSION)
-			if err != nil {
-				p11ctx.Destroy()
-				p11ctx.Finalize()
-				return nil, fmt.Errorf("failed to open PKCS#11 session: %w", err)
-			}
+            // The PIN is required to view objects on the token
+            // The PIN is required to view objects on the token
+            if err := p11ctx.Login(session, pkcs11.CKU_USER, pin); err != nil {
+                // Check if the error is specifically CKR_USER_NOT_LOGGED_IN
+                if p11Err, ok := err.(pkcs11.Error); ok && p11Err.Ret == pkcs11.CKR_USER_NOT_LOGGED_IN {
+                    // Some tokens don't require a PIN, or the user might have already logged in.
+                    // Continue without returning an error for this specific case.
+                    fmt.Fprintf(os.Stderr, "Warning: PKCS#11 login for slot %d failed with CKR_USER_NOT_LOGGED_IN. Continuing without PIN for this slot.\n", slot)
+                } else {
+                    p11ctx.Destroy()
+                    p11ctx.Finalize()
+                    return nil, fmt.Errorf("failed to log in to PKCS#11 slot %d: %w", slot, err)
+                }
+            }
 
 			// Find all certificates
 			if err := p11ctx.FindObjectsInit(session, []*pkcs11.Attribute{
