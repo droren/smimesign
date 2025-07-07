@@ -2,6 +2,7 @@ package main
 
 import (
     "bytes"
+    "crypto/x509"
     "sync"
     "testing"
 

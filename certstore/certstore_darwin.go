@@ -220,8 +220,8 @@ func (i *macIdentity) Signer() (crypto.Signer, error) {
 // Delete implements the Identity interface.
 func (i *macIdentity) Delete() error {
 	itemList := []C.SecIdentityRef{i.ref}
-	itemListPtr := (*unsafe.Pointer)(unsafe.Pointer(&itemList[0]))
-	citemList := C.CFArrayCreate(nilCFAllocatorRef, itemListPtr, 1, nil)
+	itemListPtr := &itemList[0]
+	citemList := C.CFArrayCreate(nilCFAllocatorRef, (*unsafe.Pointer)(unsafe.Pointer(itemListPtr)), 1, nil)
 	if citemList == nilCFArrayRef {
 		return errors.New("error creating CFArray")
 	}
@@ -428,7 +428,10 @@ func mapToCFDictionary(gomap map[C.CFTypeRef]C.CFTypeRef) C.CFDictionaryRef {
 		values = append(values, unsafe.Pointer(v))
 	}
 
-	return C.CFDictionaryCreate(nilCFAllocatorRef, &keys[0], &values[0], C.CFIndex(n), nil, nil)
+	keysPtr := &keys[0]
+	valuesPtr := &values[0]
+
+	return C.CFDictionaryCreate(nilCFAllocatorRef, (*unsafe.Pointer)(unsafe.Pointer(keysPtr)), (*unsafe.Pointer)(unsafe.Pointer(valuesPtr)), C.CFIndex(n), nil, nil)
 }
 
 // cfDataToBytes converts a CFDataRef to a Go byte slice.

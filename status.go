@@ -4,6 +4,7 @@ import (
 	"crypto"
 	"crypto/x509"
 	"fmt"
+	"io"
 	"os"
 	"sync"
 	"time"
@@ -112,7 +113,7 @@ const (
 
 var (
 	_setupStatus sync.Once
-	statusFile   *os.File
+	statusFile   io.Writer
 )
 
 func setupStatus() {
@@ -148,9 +149,7 @@ func (s status) emitf(format string, args ...interface{}) {
 	}
 
 	const prefix = "[GNUPG:] "
-	statusFile.WriteString(prefix)
-	statusFile.WriteString(string(s))
-	fmt.Fprintf(statusFile, " "+format+"\n", args...)
+	fmt.Fprintf(statusFile, prefix+string(s)+" "+format+"\n", args...)
 }
 
 func (s status) emit() {
@@ -161,7 +160,7 @@ func (s status) emit() {
 	}
 
 	const prefix = "[GNUPG:] "
-	statusFile.WriteString(prefix + string(s) + "\n")
+	io.WriteString(statusFile, prefix+string(s)+"\n")
 }
 
 func emitSigCreated(cert *x509.Certificate, isDetached bool) {
