@@ -1,13 +1,14 @@
 package main
 
 import (
-	"crypto"
 	"crypto/x509"
 	"fmt"
 	"io"
 	"os"
 	"sync"
 	"time"
+
+	_ "crypto"
 )
 
 const (
