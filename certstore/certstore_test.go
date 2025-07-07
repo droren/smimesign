@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"crypto/sha512"
 	"crypto/x509"
+	"errors"
 	"testing"
 
 	"github.com/github/smimesign/fakeca"
@@ -174,8 +175,8 @@ func TestSignerRSA(t *testing.T) {
 		// Unsupported hash
 		sha224Digest := sha256.Sum224([]byte("hello"))
 		_, err = signer.Sign(rand.Reader, sha224Digest[:], crypto.SHA224)
-		if err != ErrUnsupportedHash {
-			t.Fatal("expected ErrUnsupportedHash, got ", err)
+		if !errors.Is(err, ErrUnsupportedHash) {
+			t.Fatalf("expected ErrUnsupportedHash, got %v", err)
 		}
 	})
 }

@@ -2,12 +2,12 @@ package certstore
 
 import (
 	"crypto"
+	"crypto/ecdsa"
 	"crypto/rand"
-	"crypto/x509"
+	"crypto/rsa"
+	"fmt"
 	"os"
 	"testing"
-
-	"github.com/github/smimesign/fakeca"
 )
 
 // TestPKCS11Signer tests the PKCS#11 signer implementation.
@@ -76,7 +76,9 @@ func TestPKCS11Signer(t *testing.T) {
 	case *rsa.PublicKey:
 		err = rsa.VerifyPKCS1v15(pub, crypto.SHA256, hashed, sig)
 	case *ecdsa.PublicKey:
-		err = ecdsa.VerifyASN1(pub, hashed, sig)
+		if !ecdsa.VerifyASN1(pub, hashed, sig) {
+			err = fmt.Errorf("ECDSA signature verification failed")
+		}
 	default:
 		t.Fatalf("unsupported public key type: %T", pub)
 	}

@@ -55,10 +55,11 @@ func parseUserID(id string) (name, comment, email string) {
 			fallthrough
 		case 1:
 			// In name
-			if rune == '(' {
+			switch rune {
+			case '(':
 				state = 2
 				n.end = offset
-			} else if rune == '<' {
+			case '<':
 				state = 5
 				n.end = offset
 			}
