@@ -41,29 +41,29 @@ func openStore() (Store, error) {
 		}
 
 		for _, slot := range slots {
-            session, err := p11ctx.OpenSession(slot, pkcs11.CKF_SERIAL_SESSION)
-            if err != nil {
-                p11ctx.Destroy()
-                p11ctx.Finalize()
-                return nil, fmt.Errorf("failed to open PKCS#11 session for slot %d: %w", slot, err)
-            }
-            // Defer closing the session for each slot
-            defer p11ctx.CloseSession(session)
+			session, err := p11ctx.OpenSession(slot, pkcs11.CKF_SERIAL_SESSION)
+			if err != nil {
+				p11ctx.Destroy()
+				p11ctx.Finalize()
+				return nil, fmt.Errorf("failed to open PKCS#11 session for slot %d: %w", slot, err)
+			}
+			// Defer closing the session for each slot
+			defer p11ctx.CloseSession(session)
 
-            // The PIN is required to view objects on the token
-            // The PIN is required to view objects on the token
-            if err := p11ctx.Login(session, pkcs11.CKU_USER, pin); err != nil {
-                var pkcs11Error pkcs11.Error
-                if errors.As(err, &pkcs11Error) && pkcs11Error == pkcs11.CKR_USER_NOT_LOGGED_IN {
-                    // Some tokens don't require a PIN, or the user might have already logged in.
-                    // Continue without returning an error for this specific case.
-                    fmt.Fprintf(os.Stderr, "Warning: PKCS#11 login for slot %d failed with CKR_USER_NOT_LOGGED_IN. Continuing without PIN for this slot.\n", slot)
-                } else {
-                    p11ctx.Destroy()
-                    p11ctx.Finalize()
-                    return nil, fmt.Errorf("failed to log in to PKCS#11 slot %d: %w", slot, err)
-                }
-            }
+			// The PIN is required to view objects on the token
+			// The PIN is required to view objects on the token
+			if err := p11ctx.Login(session, pkcs11.CKU_USER, pin); err != nil {
+				var pkcs11Error pkcs11.Error
+				if errors.As(err, &pkcs11Error) && pkcs11Error == pkcs11.CKR_USER_NOT_LOGGED_IN {
+					// Some tokens don't require a PIN, or the user might have already logged in.
+					// Continue without returning an error for this specific case.
+					fmt.Fprintf(os.Stderr, "Warning: PKCS#11 login for slot %d failed with CKR_USER_NOT_LOGGED_IN. Continuing without PIN for this slot.\n", slot)
+				} else {
+					p11ctx.Destroy()
+					p11ctx.Finalize()
+					return nil, fmt.Errorf("failed to log in to PKCS#11 slot %d: %w", slot, err)
+				}
+			}
 
 			// Find all certificates
 			if err := p11ctx.FindObjectsInit(session, []*pkcs11.Attribute{
@@ -244,11 +244,11 @@ func (i *memIdentity) Close() {}
 
 // p11Signer implements crypto.Signer for a hardware token.
 type p11Signer struct {
-	ctx    *pkcs11.Ctx
-	sess   pkcs11.SessionHandle
-	priv   pkcs11.ObjectHandle
-	pub    crypto.PublicKey
-	mech   []*pkcs11.Mechanism
+	ctx  *pkcs11.Ctx
+	sess pkcs11.SessionHandle
+	priv pkcs11.ObjectHandle
+	pub  crypto.PublicKey
+	mech []*pkcs11.Mechanism
 }
 
 func (s *p11Signer) Public() crypto.PublicKey {
