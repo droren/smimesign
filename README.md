@@ -104,12 +104,34 @@ export SMIMESIGN_PKCS11_PIN=your_smartcard_pin
 
 ### Running tests
 
-Execute the unit tests with the Go toolchain:
+You can run tests via Makefile targets or the Go toolchain directly.
 
-```bash
-go test ./...
-```
-Ensure the `SMIMESIGN_P12` and `SMIMESIGN_P12_PASSWORD` variables point to a valid PKCS#12 file when running tests that require signing.
+- Minimal subset (safe in sandboxes):
+
+  ```bash
+  make test-min
+  ```
+
+- Full test suite:
+
+  ```bash
+  make test-all
+  ```
+
+Notes:
+- On macOS or constrained environments, set Go's fallback trust roots to avoid accessing the system trust store:
+
+  ```bash
+  export GODEBUG=x509usefallbackroots=1
+  ```
+
+- The `certstore` tests interact with the macOS Keychain and Windows Certificate Store and may require running locally without sandboxing.
+- When running tests that require signing with a PKCS#12 file, ensure these variables point to valid values:
+
+  ```bash
+  export SMIMESIGN_P12=/path/to/user.p12
+  export SMIMESIGN_P12_PASSWORD=yourpassword
+  ```
 
 ### Creating test X.509 certificates
 
