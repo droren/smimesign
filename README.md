@@ -102,6 +102,38 @@ export SMIMESIGN_PKCS11_PIN=your_smartcard_pin
 - You'll probably want to put `$GOPATH/bin` on your `$PATH`.
 - Run `go get github.com/droren/smimesign`
 
+### Cross-compiling
+
+Go uses `GOOS=darwin` for macOS (not `macos`).
+
+Linux builds are pure-Go, so you can cross-compile from any host with:
+
+```bash
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o build/linux/amd64/smimesign .
+GOOS=linux GOARCH=386  CGO_ENABLED=0 go build -o build/linux/386/smimesign .
+```
+
+Windows and macOS builds use cgo for the native certificate store, so
+cross-compiling requires a suitable C toolchain and SDK on your host
+(e.g., MinGW for Windows, and an Apple SDK or osxcross for macOS).
+
+```bash
+GOOS=windows GOARCH=amd64 CGO_ENABLED=1 go build -o build/windows/amd64/smimesign.exe .
+GOOS=windows GOARCH=386  CGO_ENABLED=1 go build -o build/windows/386/smimesign.exe .
+
+GOOS=darwin GOARCH=amd64 CGO_ENABLED=1 go build -o build/darwin/amd64/smimesign .
+GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 go build -o build/darwin/arm64/smimesign .
+```
+
+Alternatively, use the Makefile targets:
+
+```bash
+make build-linux
+make build-windows
+make build-darwin
+make build-all
+```
+
 ### Running tests
 
 You can run tests via Makefile targets or the Go toolchain directly.
