@@ -17,4 +17,5 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/miekg/pkcs11 v1.1.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
+	software.sslmate.com/src/go-pkcs12 v0.7.0 // indirect
 )
