@@ -2,9 +2,11 @@ package main
 
 import (
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"testing"
 
 	"github.com/github/smimesign/certstore"
+	"github.com/github/smimesign/fakeca"
 	cms "github.com/github/smimesign/ietf-cms"
 	"github.com/github/smimesign/ietf-cms/protocol"
 	"github.com/stretchr/testify/require"
@@ -229,6 +231,66 @@ func TestSignIncludeCerts4(t *testing.T) {
 	require.True(t, chainContains(certs, leaf.Certificate))
 	require.True(t, chainContains(certs, intermediate.Certificate))
 	require.True(t, chainContains(certs, ca.Certificate))
+}
+
+func TestFindUserIdentityRequiresCertID(t *testing.T) {
+	defer testSetup(t, "--sign", "-u", "alice@example.com")()
+
+	identA := intermediate.Issue(fakeca.Subject(pkix.Name{CommonName: "alice@example.com"}))
+	identB := intermediate.Issue(fakeca.Subject(pkix.Name{CommonName: "alice@example.com"}))
+	idents = []certstore.Identity{identity{identA}, identity{identB}}
+
+	got, err := findUserIdentity()
+	require.Error(t, err)
+	require.Nil(t, got)
+	require.Contains(t, err.Error(), "Use --cert-id")
+}
+
+func TestFindUserIdentitySelectsByCertID(t *testing.T) {
+	identA := intermediate.Issue(fakeca.Subject(pkix.Name{CommonName: "alice@example.com"}))
+	identB := intermediate.Issue(fakeca.Subject(pkix.Name{CommonName: "alice@example.com"}))
+
+	defer testSetup(t, "--sign", "-u", "alice@example.com", "--cert-id", certHexFingerprint(identB.Certificate))()
+	idents = []certstore.Identity{identity{identA}, identity{identB}}
+
+	got, err := findUserIdentity()
+	require.NoError(t, err)
+	require.NotNil(t, got)
+
+	cert, err := got.Certificate()
+	require.NoError(t, err)
+	require.True(t, cert.Equal(identB.Certificate))
+}
+
+func TestFindUserIdentityCertIDNoMatch(t *testing.T) {
+	identA := intermediate.Issue(fakeca.Subject(pkix.Name{CommonName: "alice@example.com"}))
+	identB := intermediate.Issue(fakeca.Subject(pkix.Name{CommonName: "alice@example.com"}))
+	other := intermediate.Issue(fakeca.Subject(pkix.Name{CommonName: "bob@example.com"}))
+
+	defer testSetup(t, "--sign", "-u", "alice@example.com", "--cert-id", certHexFingerprint(other.Certificate))()
+	idents = []certstore.Identity{identity{identA}, identity{identB}}
+
+	got, err := findUserIdentity()
+	require.Error(t, err)
+	require.Nil(t, got)
+	require.Contains(t, err.Error(), "does not match any identity")
+}
+
+func TestFindUserIdentitySelectsByEnvCertID(t *testing.T) {
+	identA := intermediate.Issue(fakeca.Subject(pkix.Name{CommonName: "alice@example.com"}))
+	identB := intermediate.Issue(fakeca.Subject(pkix.Name{CommonName: "alice@example.com"}))
+
+	t.Setenv("SMIMESIGN_CERT_ID", certHexFingerprint(identA.Certificate))
+	defer testSetup(t, "--sign", "-u", "alice@example.com")()
+	idents = []certstore.Identity{identity{identA}, identity{identB}}
+
+	got, err := findUserIdentity()
+	require.NoError(t, err)
+	require.NotNil(t, got)
+
+	cert, err := got.Certificate()
+	require.NoError(t, err)
+	require.True(t, cert.Equal(identA.Certificate))
 }
 
 func TestSignSelfSignedIncluded(t *testing.T) {

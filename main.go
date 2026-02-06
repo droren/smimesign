@@ -22,15 +22,16 @@ var (
 	defaultTSA = ""
 
 	// Action flags
-	helpFlag     = getopt.BoolLong("help", 'h', "print this help message")
-	versionFlag  = getopt.BoolLong("version", 'v', "print the version number")
-	signFlag     = getopt.BoolLong("sign", 's', "make a signature")
-	verifyFlag   = getopt.BoolLong("verify", 0, "verify a signature")
-	listKeysFlag       = getopt.BoolLong("list-keys", 0, "show keys")
+	helpFlag              = getopt.BoolLong("help", 'h', "print this help message")
+	versionFlag           = getopt.BoolLong("version", 'v', "print the version number")
+	signFlag              = getopt.BoolLong("sign", 's', "make a signature")
+	verifyFlag            = getopt.BoolLong("verify", 0, "verify a signature")
+	listKeysFlag          = getopt.BoolLong("list-keys", 0, "show keys")
 	listSmartcardKeysFlag = getopt.BoolLong("list-smartcard-keys", 0, "show smartcard keys")
 
 	// Option flags
 	localUserOpt    = getopt.StringLong("local-user", 'u', "", "use USER-ID to sign", "USER-ID")
+	certIDOpt       = getopt.StringLong("cert-id", 0, "", "use certificate ID to disambiguate when multiple identities match", "ID")
 	detachSignFlag  = getopt.BoolLong("detach-sign", 'b', "make a detached signature")
 	armorFlag       = getopt.BoolLong("armor", 'a', "create ascii armored output")
 	statusFdOpt     = getopt.IntLong("status-fd", 0, -1, "write special status strings to the file descriptor n.", "n")
@@ -104,6 +105,8 @@ func runCommand() error {
 			return errors.New("specify --help, --sign, --verify, or --list-keys")
 		} else if len(*localUserOpt) > 0 {
 			return errors.New("local-user cannot be specified for verification")
+		} else if len(*certIDOpt) > 0 {
+			return errors.New("cert-id cannot be specified for verification")
 		} else if *detachSignFlag {
 			return errors.New("detach-sign cannot be specified for verification")
 		} else if *armorFlag {
@@ -118,6 +121,8 @@ func runCommand() error {
 			return errors.New("specify --help, --sign, --verify, --list-keys, or --list-smartcard-keys")
 		} else if len(*localUserOpt) > 0 {
 			return errors.New("local-user cannot be specified for list-keys")
+		} else if len(*certIDOpt) > 0 {
+			return errors.New("cert-id cannot be specified for list-keys")
 		} else if *detachSignFlag {
 			return errors.New("detach-sign cannot be specified for list-keys")
 		} else if *armorFlag {
@@ -132,6 +137,8 @@ func runCommand() error {
 			return errors.New("specify --help, --sign, --verify, --list-keys, or --list-smartcard-keys")
 		} else if len(*localUserOpt) > 0 {
 			return errors.New("local-user cannot be specified for list-smartcard-keys")
+		} else if len(*certIDOpt) > 0 {
+			return errors.New("cert-id cannot be specified for list-smartcard-keys")
 		} else if *detachSignFlag {
 			return errors.New("detach-sign cannot be specified for list-smartcard-keys")
 		} else if *armorFlag {

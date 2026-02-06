@@ -197,6 +197,20 @@ $ git config --get user.email
 $ smimesign --list-keys
 ```
 
+If multiple certificates match the same email or user ID, select the desired
+certificate by ID (fingerprint). You can pass the full fingerprint or a unique
+suffix, but if the suffix is ambiguous you must provide a longer ID.
+
+```bash
+$ smimesign --sign -u user@example.com --cert-id 0x0123456789abcdef
+```
+
+You can also set a default certificate ID for the current environment:
+
+```bash
+$ export SMIMESIGN_CERT_ID=0x0123456789abcdef
+```
+
 ## Usage
 
 The `smimesign` command has three primary modes:
@@ -205,6 +219,10 @@ The `smimesign` command has three primary modes:
 - `--verify`   – verify a signature
 - `--list-keys` – list available certificates (from PKCS#12 files)
 - `--list-smartcard-keys` – list available certificates from smart cards (PKCS#11)
+
+Selection options:
+- `--cert-id` – disambiguate when multiple certificates match `--local-user`
+- `SMIMESIGN_CERT_ID` – environment fallback when `--cert-id` is not set
 
 Example of creating a detached signature and verifying it:
 
