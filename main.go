@@ -31,7 +31,7 @@ var (
 
 	// Option flags
 	localUserOpt    = getopt.StringLong("local-user", 'u', "", "use USER-ID to sign", "USER-ID")
-	certIDOpt       = getopt.StringLong("cert-id", 0, "", "use certificate ID to disambiguate when multiple identities match", "ID")
+	certIDOpt       = getopt.StringLong("cert-id", 0, "", "use certificate ID to disambiguate when multiple identities match (or set SMIMESIGN_CERT_ID)", "ID")
 	detachSignFlag  = getopt.BoolLong("detach-sign", 'b', "make a detached signature")
 	armorFlag       = getopt.BoolLong("armor", 'a', "create ascii armored output")
 	statusFdOpt     = getopt.IntLong("status-fd", 0, -1, "write special status strings to the file descriptor n.", "n")
