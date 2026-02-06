@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/pem"
 	"testing"
 
 	"github.com/github/smimesign/certstore"
@@ -291,6 +292,30 @@ func TestFindUserIdentitySelectsByEnvCertID(t *testing.T) {
 	cert, err := got.Certificate()
 	require.NoError(t, err)
 	require.True(t, cert.Equal(identA.Certificate))
+}
+
+func TestDumpCertsFromSignature(t *testing.T) {
+	defer testSetup(t, "--dump-certs")()
+
+	sd, err := cms.NewSignedData([]byte("hello"))
+	require.NoError(t, err)
+
+	require.NoError(t, sd.Sign([]*x509.Certificate{leaf.Certificate}, leaf.PrivateKey))
+	require.NoError(t, sd.SetCertificates([]*x509.Certificate{leaf.Certificate}))
+
+	der, err := sd.ToDER()
+	require.NoError(t, err)
+
+	stdinBuf.Write(der)
+
+	require.NoError(t, commandDumpCerts())
+
+	block, _ := pem.Decode(stdoutBuf.Bytes())
+	require.NotNil(t, block)
+
+	cert, err := x509.ParseCertificate(block.Bytes)
+	require.NoError(t, err)
+	require.True(t, cert.Equal(leaf.Certificate))
 }
 
 func TestSignSelfSignedIncluded(t *testing.T) {

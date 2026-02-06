@@ -217,6 +217,7 @@ The `smimesign` command has three primary modes:
 
 - `--sign`     – create a signature for a file
 - `--verify`   – verify a signature
+- `--dump-certs` – extract embedded X.509 certificates from a signature (PEM)
 - `--list-keys` – list available certificates (from PKCS#12 files)
 - `--list-smartcard-keys` – list available certificates from smart cards (PKCS#11)
 
@@ -229,6 +230,13 @@ Example of creating a detached signature and verifying it:
 ```bash
 $ smimesign --sign -u user@example.com -b file.txt > file.txt.sig
 $ smimesign --verify file.txt.sig file.txt
+```
+
+Extract certificates embedded in a signature (outputs PEM to stdout):
+
+```bash
+$ smimesign --dump-certs file.txt.sig > certs.pem
+$ openssl x509 -in certs.pem -noout -text
 ```
 
 ## Smart cards (PIV/CAC/Yubikey)

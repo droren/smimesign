@@ -26,6 +26,7 @@ var (
 	versionFlag           = getopt.BoolLong("version", 'v', "print the version number")
 	signFlag              = getopt.BoolLong("sign", 's', "make a signature")
 	verifyFlag            = getopt.BoolLong("verify", 0, "verify a signature")
+	dumpCertsFlag         = getopt.BoolLong("dump-certs", 0, "dump X.509 certificates embedded in a signature")
 	listKeysFlag          = getopt.BoolLong("list-keys", 0, "show keys")
 	listSmartcardKeysFlag = getopt.BoolLong("list-smartcard-keys", 0, "show smartcard keys")
 
@@ -91,8 +92,8 @@ func runCommand() error {
 	}
 
 	if *signFlag {
-		if *verifyFlag || *listKeysFlag {
-			return errors.New("specify --help, --sign, --verify, or --list-keys")
+		if *verifyFlag || *dumpCertsFlag || *listKeysFlag {
+			return errors.New("specify --help, --sign, --verify, --dump-certs, or --list-keys")
 		} else if len(*localUserOpt) == 0 {
 			return errors.New("specify a USER-ID to sign with")
 		} else {
@@ -101,8 +102,8 @@ func runCommand() error {
 	}
 
 	if *verifyFlag {
-		if *signFlag || *listKeysFlag {
-			return errors.New("specify --help, --sign, --verify, or --list-keys")
+		if *signFlag || *dumpCertsFlag || *listKeysFlag {
+			return errors.New("specify --help, --sign, --verify, --dump-certs, or --list-keys")
 		} else if len(*localUserOpt) > 0 {
 			return errors.New("local-user cannot be specified for verification")
 		} else if len(*certIDOpt) > 0 {
@@ -116,9 +117,25 @@ func runCommand() error {
 		}
 	}
 
+	if *dumpCertsFlag {
+		if *signFlag || *verifyFlag || *listKeysFlag || *listSmartcardKeysFlag {
+			return errors.New("specify --help, --sign, --verify, --dump-certs, --list-keys, or --list-smartcard-keys")
+		} else if len(*localUserOpt) > 0 {
+			return errors.New("local-user cannot be specified for dump-certs")
+		} else if len(*certIDOpt) > 0 {
+			return errors.New("cert-id cannot be specified for dump-certs")
+		} else if *detachSignFlag {
+			return errors.New("detach-sign cannot be specified for dump-certs")
+		} else if *armorFlag {
+			return errors.New("armor cannot be specified for dump-certs")
+		} else {
+			return commandDumpCerts()
+		}
+	}
+
 	if *listKeysFlag {
-		if *signFlag || *verifyFlag || *listSmartcardKeysFlag {
-			return errors.New("specify --help, --sign, --verify, --list-keys, or --list-smartcard-keys")
+		if *signFlag || *verifyFlag || *dumpCertsFlag || *listSmartcardKeysFlag {
+			return errors.New("specify --help, --sign, --verify, --dump-certs, --list-keys, or --list-smartcard-keys")
 		} else if len(*localUserOpt) > 0 {
 			return errors.New("local-user cannot be specified for list-keys")
 		} else if len(*certIDOpt) > 0 {
@@ -133,8 +150,8 @@ func runCommand() error {
 	}
 
 	if *listSmartcardKeysFlag {
-		if *signFlag || *verifyFlag || *listKeysFlag {
-			return errors.New("specify --help, --sign, --verify, --list-keys, or --list-smartcard-keys")
+		if *signFlag || *verifyFlag || *dumpCertsFlag || *listKeysFlag {
+			return errors.New("specify --help, --sign, --verify, --dump-certs, --list-keys, or --list-smartcard-keys")
 		} else if len(*localUserOpt) > 0 {
 			return errors.New("local-user cannot be specified for list-smartcard-keys")
 		} else if len(*certIDOpt) > 0 {
@@ -148,5 +165,5 @@ func runCommand() error {
 		}
 	}
 
-	return errors.New("specify --help, --sign, --verify, or --list-keys")
+	return errors.New("specify --help, --sign, --verify, --dump-certs, or --list-keys")
 }
