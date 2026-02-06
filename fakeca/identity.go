@@ -96,7 +96,7 @@ func toPFX(cert *x509.Certificate, priv interface{}, password string, chain ...*
 	}
 
 	passout := fmt.Sprintf("pass:%s", password)
-	cmd := exec.Command("openssl", "pkcs12", "-export", "-passout", passout)
+	cmd := exec.Command("openssl", "pkcs12", "-export", "-passout", passout) // #nosec G204 -- test helper uses controlled input.
 
 	pemData := append(append(toPKCS8(priv), '\n'), toPEM(cert)...)
 	for _, c := range chain {

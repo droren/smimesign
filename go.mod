@@ -1,8 +1,8 @@
 module github.com/github/smimesign
 
-go 1.24.0
+go 1.25.0
 
-toolchain go1.24.2
+toolchain go1.25.7
 
 require (
 	github.com/certifi/gocertifi v0.0.0-20180118203423-deb3ae2ef261

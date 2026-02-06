@@ -2,7 +2,7 @@ package main
 
 import (
 	"bytes"
-	"crypto/sha1"
+	"crypto/sha1" // #nosec G505 -- required for X.509 SHA1 fingerprints.
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/hex"
@@ -17,14 +17,14 @@ func normalizeFingerprint(sfpr string) []byte {
 		return nil
 	}
 
-    // Allow both lowercase and uppercase 0x/0X prefixes – match is
-    // performed in a case-insensitive manner to better mirror how tooling
-    // such as GnuPG treats fingerprint prefixes.
-    if len(sfpr) >= 2 && sfpr[0] == '0' {
-        if sfpr[1] == 'x' || sfpr[1] == 'X' {
-            sfpr = sfpr[2:]
-        }
-    }
+	// Allow both lowercase and uppercase 0x/0X prefixes – match is
+	// performed in a case-insensitive manner to better mirror how tooling
+	// such as GnuPG treats fingerprint prefixes.
+	if len(sfpr) >= 2 && sfpr[0] == '0' {
+		if sfpr[1] == 'x' || sfpr[1] == 'X' {
+			sfpr = sfpr[2:]
+		}
+	}
 
 	hfpr, err := hex.DecodeString(sfpr)
 	if err != nil {
@@ -54,7 +54,7 @@ func certFingerprint(cert *x509.Certificate) []byte {
 		return nil
 	}
 
-	fpr := sha1.Sum(cert.Raw)
+	fpr := sha1.Sum(cert.Raw) // #nosec G401 -- SHA1 is used for legacy cert fingerprints.
 	return fpr[:]
 }
 
