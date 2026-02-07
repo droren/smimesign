@@ -53,13 +53,17 @@ jobs:
         arch: [amd64, 386]
     runs-on: ${{ matrix.os }}
     env:
-      CGO_ENABLED: 0
+      CGO_ENABLED: 1
       GOARCH: ${{ matrix.arch }}
     steps:
       - name: Install Go
         uses: actions/setup-go@v2
         with:
           go-version: ${{ matrix.go-version }}
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-multilib libc6-dev-i386
       - name: Checkout code
         uses: actions/checkout@v4
         with:
