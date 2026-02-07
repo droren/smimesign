@@ -151,6 +151,7 @@ jobs:
         run: |
           # Placeholder for MSI creation. This would typically involve a tool like WiX Toolset or a custom script.
           # For now, we'll just create a dummy file.
+          New-Item -ItemType Directory -Force -Path build/installer | Out-Null
           echo "Dummy MSI content" > build/installer/smimesign-windows-amd64-${{ env.GIT_VERSION }}.msi
       - name: Create zip for release upload
         run: |
