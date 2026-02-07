@@ -53,13 +53,17 @@ jobs:
         arch: [amd64, 386]
     runs-on: ${{ matrix.os }}
     env:
-      CGO_ENABLED: 0
+      CGO_ENABLED: 1
       GOARCH: ${{ matrix.arch }}
     steps:
       - name: Install Go
         uses: actions/setup-go@v2
         with:
           go-version: ${{ matrix.go-version }}
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-multilib libc6-dev-i386
       - name: Checkout code
         uses: actions/checkout@v4
         with:
@@ -171,6 +175,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Calculate git version and add it to the environment
+        shell: bash
+        run: |
+          echo "GIT_VERSION=$(git describe --tags)" >> $GITHUB_ENV
       - name: Log in to the Container registry
         uses: docker/login-action@v3
         with:
@@ -195,3 +203,5 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            GIT_VERSION=${{ env.GIT_VERSION }}
