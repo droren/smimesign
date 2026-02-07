@@ -10,7 +10,7 @@ jobs:
   build-macos:
     strategy:
       matrix:
-        go-version: ["1.23"]
+        go-version: ["1.25"]
         os: [macos-latest]
     runs-on: ${{ matrix.os }}
     env:
@@ -48,12 +48,12 @@ jobs:
   build-linux:
     strategy:
       matrix:
-        go-version: ["1.23"]
+        go-version: ["1.25"]
         os: [ubuntu-latest]
         arch: [amd64, 386]
     runs-on: ${{ matrix.os }}
     env:
-      CGO_ENABLED: 1
+      CGO_ENABLED: 0
       GOARCH: ${{ matrix.arch }}
     steps:
       - name: Install Go
@@ -80,6 +80,9 @@ jobs:
       - name: Build linux binary
         run: |
           go build -o build/linux/smimesign-${{ matrix.arch }} -ldflags "-X main.versionString=${{ env.GIT_VERSION }}" .
+          if [ "${{ matrix.arch }}" = "amd64" ]; then
+            cp build/linux/smimesign-${{ matrix.arch }} build/linux/smimesign
+          fi
       - name: Install nfpm
         run: |
           go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
@@ -100,9 +103,9 @@ jobs:
   build-windows:
     strategy:
       matrix:
-        go-version: ["1.23"]
+        go-version: ["1.25"]
         os: [windows-latest]
-        arch: [amd64, 386]
+        arch: [amd64]
     runs-on: ${{ matrix.os }}
     env:
       CGO_ENABLED: 1
@@ -135,6 +138,7 @@ jobs:
         run: |
           go build -o "build/${{ matrix.arch }}/smimesign.exe" -ldflags "-X main.versionString=${{ env.GIT_VERSION }}"
       - name: Sign binary
+        if: ${{ secrets.PFX_PASSWORD != '' }}
         run: |
           .\windows-installer\signtool.exe sign /tr http://timestamp.digicert.com /td sha256 /fd sha256 /p ${{ secrets.PFX_PASSWORD }} /f windows-installer\codesign.pfx build\${{ matrix.arch }}\smimesign.exe
       - name: Create installer (MSI)
