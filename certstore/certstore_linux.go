@@ -14,6 +14,7 @@ import (
 	"os/exec"
 
 	"github.com/miekg/pkcs11"
+	pkcs12 "software.sslmate.com/src/go-pkcs12"
 )
 
 // memStore implements an in-memory certificate store for Linux.
@@ -308,6 +309,11 @@ func (p *p11Identity) Signer(cert *x509.Certificate) (crypto.Signer, error) {
 // parsePKCS12 uses the openssl command to decode PKCS#12 data since the
 // standard library does not support all variants used by OpenSSL.
 func parsePKCS12(data []byte, password string) (interface{}, *x509.Certificate, []*x509.Certificate, error) {
+	if key, cert, chain, err := pkcs12.DecodeChain(data, password); err == nil && key != nil && cert != nil {
+		certs := append([]*x509.Certificate{cert}, chain...)
+		return key, cert, certs, nil
+	}
+
 	passin := fmt.Sprintf("pass:%s", password)
 	cmd := exec.Command("openssl", "pkcs12", "-nodes", "-passin", passin)
 	cmd.Stdin = bytes.NewReader(data)
