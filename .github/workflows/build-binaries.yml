@@ -110,6 +110,7 @@ jobs:
     env:
       CGO_ENABLED: 1
       GOARCH: ${{ matrix.arch }}
+      PFX_PASSWORD: ${{ secrets.PFX_PASSWORD }}
     steps:
       - name: Install Go
         uses: actions/setup-go@v2
@@ -138,9 +139,9 @@ jobs:
         run: |
           go build -o "build/${{ matrix.arch }}/smimesign.exe" -ldflags "-X main.versionString=${{ env.GIT_VERSION }}"
       - name: Sign binary
-        if: ${{ secrets.PFX_PASSWORD != '' }}
+        if: ${{ env.PFX_PASSWORD != '' }}
         run: |
-          .\windows-installer\signtool.exe sign /tr http://timestamp.digicert.com /td sha256 /fd sha256 /p ${{ secrets.PFX_PASSWORD }} /f windows-installer\codesign.pfx build\${{ matrix.arch }}\smimesign.exe
+          .\windows-installer\signtool.exe sign /tr http://timestamp.digicert.com /td sha256 /fd sha256 /p ${{ env.PFX_PASSWORD }} /f windows-installer\codesign.pfx build\${{ matrix.arch }}\smimesign.exe
       - name: Create installer (MSI)
         if: ${{ matrix.arch == 'amd64' }}
         run: |
