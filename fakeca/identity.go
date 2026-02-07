@@ -1,15 +1,12 @@
 package fakeca
 
 import (
-	"bytes"
 	"crypto"
-	"crypto/ecdsa"
-	"crypto/rsa"
+	"crypto/rand"
 	"crypto/x509"
-	"encoding/pem"
-	"errors"
 	"fmt"
-	"os/exec"
+
+	pkcs12 "software.sslmate.com/src/go-pkcs12"
 )
 
 // Identity is a certificate and private key.
@@ -95,66 +92,10 @@ func toPFX(cert *x509.Certificate, priv interface{}, password string, chain ...*
 		}
 	}
 
-	passout := fmt.Sprintf("pass:%s", password)
-	cmd := exec.Command("openssl", "pkcs12", "-export", "-passout", passout)
-
-	pemData := append(append(toPKCS8(priv), '\n'), toPEM(cert)...)
-	for _, c := range chain {
-		pemData = append(pemData, toPEM(c)...)
-	}
-
-	cmd.Stdin = bytes.NewReader(pemData)
-
-	out := new(bytes.Buffer)
-	cmd.Stdout = out
-
-	if err := cmd.Run(); err != nil {
-		panic(err)
-	}
-
-	return out.Bytes()
-}
-
-func toPEM(cert *x509.Certificate) []byte {
-	buf := new(bytes.Buffer)
-	if err := pem.Encode(buf, &pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw}); err != nil {
-		panic(err)
-	}
-
-	return buf.Bytes()
-}
-
-func toDER(priv interface{}) []byte {
-	var (
-		der []byte
-		err error
-	)
-	switch p := priv.(type) {
-	case *rsa.PrivateKey:
-		der = x509.MarshalPKCS1PrivateKey(p)
-	case *ecdsa.PrivateKey:
-		der, err = x509.MarshalECPrivateKey(p)
-	default:
-		err = errors.New("unknown key type")
-	}
+	pfx, err := pkcs12.Encode(rand.Reader, priv, cert, chain, fmt.Sprintf("%s", password))
 	if err != nil {
 		panic(err)
 	}
 
-	return der
-}
-
-func toPKCS8(priv interface{}) []byte {
-	cmd := exec.Command("openssl", "pkcs8", "-topk8", "-nocrypt", "-inform", "DER")
-
-	cmd.Stdin = bytes.NewReader(toDER(priv))
-
-	out := new(bytes.Buffer)
-	cmd.Stdout = out
-
-	if err := cmd.Run(); err != nil {
-		panic(err)
-	}
-
-	return out.Bytes()
+	return pfx
 }

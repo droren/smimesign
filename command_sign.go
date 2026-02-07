@@ -103,12 +103,18 @@ func commandSign() error {
 	return nil
 }
 
+type identityMatch struct {
+	ident certstore.Identity
+	cert  *x509.Certificate
+}
+
 // findUserIdentity attempts to find an identity to sign with in the certstore
 // by checking available identities against the --local-user argument.
 func findUserIdentity() (certstore.Identity, error) {
 	var (
-		email string
-		fpr   []byte
+		email   string
+		fpr     []byte
+		certFpr []byte
 	)
 
 	if strings.ContainsRune(*localUserOpt, '@') {
@@ -121,27 +127,163 @@ func findUserIdentity() (certstore.Identity, error) {
 		return nil, fmt.Errorf("bad user-id format: %s", *localUserOpt)
 	}
 
-	var matches []certstore.Identity
+	certID := strings.TrimSpace(*certIDOpt)
+	if certID == "" {
+		certID = strings.TrimSpace(os.Getenv("SMIMESIGN_CERT_ID"))
+	}
+	if len(certID) > 0 {
+		certFpr = normalizeFingerprint(certID)
+		if len(certFpr) == 0 {
+			return nil, fmt.Errorf("bad cert-id format: %s", certID)
+		}
+	}
+
+	var matches []identityMatch
 	for _, ident := range idents {
 		if cert, err := ident.Certificate(); err == nil && (certHasEmail(cert, email) || certHasFingerprint(cert, fpr)) {
-			matches = append(matches, ident)
+			matches = append(matches, identityMatch{ident: ident, cert: cert})
 		}
 	}
 
 	if len(matches) == 0 {
 		return nil, nil
 	}
-	if len(matches) > 1 {
-		var info []string
-		for _, ident := range matches {
-			if cert, err := ident.Certificate(); err == nil {
-				info = append(info, fmt.Sprintf("%s (%s)", cert.Subject.CommonName, certHexFingerprint(cert)))
+
+	if len(certFpr) > 0 {
+		var filtered []identityMatch
+		for _, entry := range matches {
+			if certHasFingerprint(entry.cert, certFpr) {
+				filtered = append(filtered, entry)
 			}
 		}
-		return nil, fmt.Errorf("multiple identities match %q: %s", *localUserOpt, strings.Join(info, ", "))
+		if len(filtered) == 1 {
+			return filtered[0].ident, nil
+		}
+		list := matches
+		if len(filtered) > 0 {
+			list = filtered
+		}
+		return nil, fmt.Errorf("%s: %s", certIDSelectionError(*localUserOpt, certID, filtered), strings.Join(identityInfo(list), ", "))
 	}
 
-	return matches[0], nil
+	if len(matches) > 1 {
+		return nil, fmt.Errorf("multiple identities match %q. Use --cert-id to select one: %s", *localUserOpt, strings.Join(identityInfo(matches), ", "))
+	}
+
+	return matches[0].ident, nil
+}
+
+func certIDSelectionError(userID, certID string, filtered []identityMatch) string {
+	if len(filtered) == 0 {
+		return fmt.Sprintf("cert-id %q does not match any identity for %q. Available identities", certID, userID)
+	}
+	return fmt.Sprintf("cert-id %q matches multiple identities for %q (use a longer id). Matching identities", certID, userID)
+}
+
+func identityInfo(matches []identityMatch) []string {
+	info := make([]string, 0, len(matches))
+	for _, entry := range matches {
+		if entry.cert == nil {
+			continue
+		}
+		info = append(info, formatIdentity(entry.cert))
+	}
+	return info
+}
+
+func formatIdentity(cert *x509.Certificate) string {
+	name := cert.Subject.CommonName
+	if name == "" {
+		name = cert.Subject.String()
+	}
+	fpr := certHexFingerprint(cert)
+	usage := formatUsages(cert)
+	if usage == "" {
+		return fmt.Sprintf("%s (%s)", name, fpr)
+	}
+	return fmt.Sprintf("%s (%s; %s)", name, fpr, usage)
+}
+
+func formatUsages(cert *x509.Certificate) string {
+	var parts []string
+	if cert.KeyUsage != 0 {
+		parts = append(parts, fmt.Sprintf("KU=%s", keyUsageStrings(cert.KeyUsage)))
+	}
+	if len(cert.ExtKeyUsage) > 0 {
+		parts = append(parts, fmt.Sprintf("EKU=%s", extKeyUsageStrings(cert.ExtKeyUsage)))
+	}
+	return strings.Join(parts, ", ")
+}
+
+func keyUsageStrings(usage x509.KeyUsage) string {
+	var parts []string
+	if usage&x509.KeyUsageDigitalSignature != 0 {
+		parts = append(parts, "digitalSignature")
+	}
+	if usage&x509.KeyUsageContentCommitment != 0 {
+		parts = append(parts, "contentCommitment")
+	}
+	if usage&x509.KeyUsageKeyEncipherment != 0 {
+		parts = append(parts, "keyEncipherment")
+	}
+	if usage&x509.KeyUsageDataEncipherment != 0 {
+		parts = append(parts, "dataEncipherment")
+	}
+	if usage&x509.KeyUsageKeyAgreement != 0 {
+		parts = append(parts, "keyAgreement")
+	}
+	if usage&x509.KeyUsageCertSign != 0 {
+		parts = append(parts, "certSign")
+	}
+	if usage&x509.KeyUsageCRLSign != 0 {
+		parts = append(parts, "crlSign")
+	}
+	if usage&x509.KeyUsageEncipherOnly != 0 {
+		parts = append(parts, "encipherOnly")
+	}
+	if usage&x509.KeyUsageDecipherOnly != 0 {
+		parts = append(parts, "decipherOnly")
+	}
+	return strings.Join(parts, "/")
+}
+
+func extKeyUsageStrings(usages []x509.ExtKeyUsage) string {
+	parts := make([]string, 0, len(usages))
+	for _, usage := range usages {
+		switch usage {
+		case x509.ExtKeyUsageAny:
+			parts = append(parts, "any")
+		case x509.ExtKeyUsageServerAuth:
+			parts = append(parts, "serverAuth")
+		case x509.ExtKeyUsageClientAuth:
+			parts = append(parts, "clientAuth")
+		case x509.ExtKeyUsageCodeSigning:
+			parts = append(parts, "codeSigning")
+		case x509.ExtKeyUsageEmailProtection:
+			parts = append(parts, "emailProtection")
+		case x509.ExtKeyUsageTimeStamping:
+			parts = append(parts, "timeStamping")
+		case x509.ExtKeyUsageOCSPSigning:
+			parts = append(parts, "ocspSigning")
+		case x509.ExtKeyUsageIPSECEndSystem:
+			parts = append(parts, "ipsecEndSystem")
+		case x509.ExtKeyUsageIPSECTunnel:
+			parts = append(parts, "ipsecTunnel")
+		case x509.ExtKeyUsageIPSECUser:
+			parts = append(parts, "ipsecUser")
+		case x509.ExtKeyUsageMicrosoftServerGatedCrypto:
+			parts = append(parts, "msServerGatedCrypto")
+		case x509.ExtKeyUsageNetscapeServerGatedCrypto:
+			parts = append(parts, "nsServerGatedCrypto")
+		case x509.ExtKeyUsageMicrosoftCommercialCodeSigning:
+			parts = append(parts, "msCommercialCodeSigning")
+		case x509.ExtKeyUsageMicrosoftKernelCodeSigning:
+			parts = append(parts, "msKernelCodeSigning")
+		default:
+			parts = append(parts, fmt.Sprintf("usage(%d)", int(usage)))
+		}
+	}
+	return strings.Join(parts, "/")
 }
 
 // certsForSignature determines which certificates to include in the signature

@@ -20,15 +20,20 @@ func (s asn1Structured) encodeTo(out *bytes.Buffer) error {
 	encodeIndent++
 	inner := new(bytes.Buffer)
 	for _, obj := range s.content {
-		err := obj.encodeTo(inner)
-		if err != nil {
+		if err := obj.encodeTo(inner); err != nil {
 			return err
 		}
 	}
 	encodeIndent--
-	out.Write(s.tagBytes)
-	encodeLength(out, inner.Len())
-	out.Write(inner.Bytes())
+	if _, err := out.Write(s.tagBytes); err != nil {
+		return err
+	}
+	if err := encodeLength(out, inner.Len()); err != nil {
+		return err
+	}
+	if _, err := out.Write(inner.Bytes()); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -48,7 +53,9 @@ func (p asn1Primitive) encodeTo(out *bytes.Buffer) error {
 	}
 	//fmt.Printf("%s--> tag: % X length: %d\n", strings.Repeat("| ", encodeIndent), p.tagBytes, p.length)
 	//fmt.Printf("%s--> content length: %d\n", strings.Repeat("| ", encodeIndent), len(p.content))
-	out.Write(p.content)
+	if _, err := out.Write(p.content); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -65,7 +72,9 @@ func BER2DER(ber []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	obj.encodeTo(out)
+	if err := obj.encodeTo(out); err != nil {
+		return nil, err
+	}
 
 	// if offset < len(ber) {
 	//	return nil, fmt.Errorf("ber2der: Content longer than expected. Got %d, expected %d", offset, len(ber))
@@ -79,7 +88,8 @@ func marshalLongLength(out *bytes.Buffer, i int) (err error) {
 	n := lengthLength(i)
 
 	for ; n > 0; n-- {
-		err = out.WriteByte(byte(i >> uint((n-1)*8)))
+		shift := (n - 1) * 8
+		err = out.WriteByte(byte(i >> shift))
 		if err != nil {
 			return
 		}
@@ -89,7 +99,7 @@ func marshalLongLength(out *bytes.Buffer, i int) (err error) {
 }
 
 // computes the byte length of an encoded length value
-func lengthLength(i int) (numBytes int) {
+func lengthLength(i int) (numBytes uint) {
 	numBytes = 1
 	for i > 255 {
 		numBytes++
@@ -106,12 +116,12 @@ func lengthLength(i int) (numBytes int) {
 // added to 0x80. The length is encoded in big endian encoding follow after
 //
 // Examples:
-//  length | byte 1 | bytes n
-//  0      | 0x00   | -
-//  120    | 0x78   | -
-//  200    | 0x81   | 0xC8
-//  500    | 0x82   | 0x01 0xF4
 //
+//	length | byte 1 | bytes n
+//	0      | 0x00   | -
+//	120    | 0x78   | -
+//	200    | 0x81   | 0xC8
+//	500    | 0x82   | 0x01 0xF4
 func encodeLength(out *bytes.Buffer, length int) (err error) {
 	if length >= 128 {
 		l := lengthLength(length)

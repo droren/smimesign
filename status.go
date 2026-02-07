@@ -13,13 +13,13 @@ import (
 
 const (
 	// OpenPGP Public Key Algorithms (RFC 4880, Section 9.1)
-	opgpPubKeyAlgoRSA byte = 1 // RSA (Encrypt or Sign)
+	opgpPubKeyAlgoRSA   byte = 1  // RSA (Encrypt or Sign)
 	opgpPubKeyAlgoECDSA byte = 19 // ECDSA
 
 	// OpenPGP Hash Algorithms (RFC 4880, Section 9.4)
-	opgpHashAlgoSHA1 byte = 2 // SHA1
-	opgpHashAlgoSHA256 byte = 8 // SHA256
-	opgpHashAlgoSHA384 byte = 9 // SHA384
+	opgpHashAlgoSHA1   byte = 2  // SHA1
+	opgpHashAlgoSHA256 byte = 8  // SHA256
+	opgpHashAlgoSHA384 byte = 9  // SHA384
 	opgpHashAlgoSHA512 byte = 10 // SHA512
 )
 
@@ -170,7 +170,9 @@ func (s status) emit() {
 	}
 
 	const prefix = "[GNUPG:] "
-	io.WriteString(statusFile, prefix+string(s)+"\n")
+	if _, err := io.WriteString(statusFile, prefix+string(s)+"\n"); err != nil {
+		return
+	}
 }
 
 func emitSigCreated(cert *x509.Certificate, isDetached bool) {
@@ -223,14 +225,14 @@ func emitGoodSig(chains [][][]*x509.Certificate) {
 }
 
 func emitBadSig(chains [][][]*x509.Certificate) {
-    cert := chains[0][0][0]
-    // Subject.String() returns the RFC-4514 string representation of the
-    // subject distinguished name and must be invoked as a method – using the
-    // method *value* (without parentheses) results in a compilation error.
-    subj := cert.Subject.String()
-    fpr := certHexFingerprint(cert)
+	cert := chains[0][0][0]
+	// Subject.String() returns the RFC-4514 string representation of the
+	// subject distinguished name and must be invoked as a method – using the
+	// method *value* (without parentheses) results in a compilation error.
+	subj := cert.Subject.String()
+	fpr := certHexFingerprint(cert)
 
-    sBadSig.emitf("%s %s", fpr, subj)
+	sBadSig.emitf("%s %s", fpr, subj)
 }
 
 func emitTrustFully() {

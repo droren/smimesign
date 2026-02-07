@@ -21,3 +21,6 @@ ls/build
 # Always ignore the build artifact SMIMESIGN
 smimesign
 .DS_Store
+._*
+.gocache/
+.gomodcache/

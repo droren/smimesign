@@ -102,14 +102,68 @@ export SMIMESIGN_PKCS11_PIN=your_smartcard_pin
 - You'll probably want to put `$GOPATH/bin` on your `$PATH`.
 - Run `go get github.com/droren/smimesign`
 
-### Running tests
+### Cross-compiling
 
-Execute the unit tests with the Go toolchain:
+Go uses `GOOS=darwin` for macOS (not `macos`).
+
+Linux builds are pure-Go, so you can cross-compile from any host with:
 
 ```bash
-go test ./...
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o build/linux/amd64/smimesign .
+GOOS=linux GOARCH=386  CGO_ENABLED=0 go build -o build/linux/386/smimesign .
 ```
-Ensure the `SMIMESIGN_P12` and `SMIMESIGN_P12_PASSWORD` variables point to a valid PKCS#12 file when running tests that require signing.
+
+Windows and macOS builds use cgo for the native certificate store, so
+cross-compiling requires a suitable C toolchain and SDK on your host
+(e.g., MinGW for Windows, and an Apple SDK or osxcross for macOS).
+
+```bash
+GOOS=windows GOARCH=amd64 CGO_ENABLED=1 go build -o build/windows/amd64/smimesign.exe .
+GOOS=windows GOARCH=386  CGO_ENABLED=1 go build -o build/windows/386/smimesign.exe .
+
+GOOS=darwin GOARCH=amd64 CGO_ENABLED=1 go build -o build/darwin/amd64/smimesign .
+GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 go build -o build/darwin/arm64/smimesign .
+```
+
+Alternatively, use the Makefile targets:
+
+```bash
+make build-linux
+make build-windows
+make build-darwin
+make build-all
+```
+
+### Running tests
+
+You can run tests via Makefile targets or the Go toolchain directly.
+
+- Minimal subset (safe in sandboxes):
+
+  ```bash
+  make test-min
+  ```
+
+- Full test suite:
+
+  ```bash
+  make test-all
+  ```
+
+Notes:
+- On macOS or constrained environments, set Go's fallback trust roots to avoid accessing the system trust store:
+
+  ```bash
+  export GODEBUG=x509usefallbackroots=1
+  ```
+
+- The `certstore` tests interact with the macOS Keychain and Windows Certificate Store and may require running locally without sandboxing.
+- When running tests that require signing with a PKCS#12 file, ensure these variables point to valid values:
+
+  ```bash
+  export SMIMESIGN_P12=/path/to/user.p12
+  export SMIMESIGN_P12_PASSWORD=yourpassword
+  ```
 
 ### Creating test X.509 certificates
 
@@ -175,20 +229,46 @@ $ git config --get user.email
 $ smimesign --list-keys
 ```
 
+If multiple certificates match the same email or user ID, select the desired
+certificate by ID (fingerprint). You can pass the full fingerprint or a unique
+suffix, but if the suffix is ambiguous you must provide a longer ID.
+
+```bash
+$ smimesign --sign -u user@example.com --cert-id 0x0123456789abcdef
+```
+
+You can also set a default certificate ID for the current environment:
+
+```bash
+$ export SMIMESIGN_CERT_ID=0x0123456789abcdef
+```
+
 ## Usage
 
 The `smimesign` command has three primary modes:
 
 - `--sign`     – create a signature for a file
 - `--verify`   – verify a signature
+- `--dump-certs` – extract embedded X.509 certificates from a signature (PEM)
 - `--list-keys` – list available certificates (from PKCS#12 files)
 - `--list-smartcard-keys` – list available certificates from smart cards (PKCS#11)
+
+Selection options:
+- `--cert-id` – disambiguate when multiple certificates match `--local-user`
+- `SMIMESIGN_CERT_ID` – environment fallback when `--cert-id` is not set
 
 Example of creating a detached signature and verifying it:
 
 ```bash
 $ smimesign --sign -u user@example.com -b file.txt > file.txt.sig
 $ smimesign --verify file.txt.sig file.txt
+```
+
+Extract certificates embedded in a signature (outputs PEM to stdout):
+
+```bash
+$ smimesign --dump-certs file.txt.sig > certs.pem
+$ openssl x509 -in certs.pem -noout -text
 ```
 
 ## Smart cards (PIV/CAC/Yubikey)
