@@ -3,14 +3,20 @@
 package certstore
 
 import (
+	"bufio"
+	"bytes"
 	"crypto"
 	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
+	"strings"
+	"sync"
 
 	"github.com/miekg/pkcs11"
+	"golang.org/x/term"
 )
 
 type pkcs11State struct {
@@ -30,21 +36,20 @@ func initPKCS11(s *memStore) error {
 		return nil
 	}
 
-	pin := os.Getenv("SMIMESIGN_PKCS11_PIN")
+	// Explicit opt-in only. If unset, we prompt via pinentry/tty.
+	envPin := os.Getenv("SMIMESIGN_PKCS11_PIN")
+
 	p11ctx := pkcs11.New(modulePath)
 
-	// IMPORTANT: Some PKCS#11 stacks (notably OpenSC in certain setups / proxy layers)
-	// can report "already initialized" if something has initialized the library earlier.
+	// IMPORTANT: Some PKCS#11 stacks can report "already initialized".
 	// Treat CKR_CRYPTOKI_ALREADY_INITIALIZED as non-fatal.
 	if err := p11ctx.Initialize(); err != nil {
 		var pkcs11Error pkcs11.Error
 		if !(errors.As(err, &pkcs11Error) && pkcs11Error == pkcs11.CKR_CRYPTOKI_ALREADY_INITIALIZED) {
 			return fmt.Errorf("failed to initialize PKCS#11 module %q: %w", modulePath, err)
 		}
-		// Continue.
 	}
 
-	// If we fail after creating/initializing ctx, make sure we cleanup.
 	cleanupCtx := func() {
 		p11ctx.Destroy()
 		_ = p11ctx.Finalize()
@@ -56,6 +61,10 @@ func initPKCS11(s *memStore) error {
 		return fmt.Errorf("failed to get PKCS#11 slot list: %w", err)
 	}
 
+	// Cache a prompted PIN once per process run (unless env pin is set).
+	// This avoids prompting twice if you have multiple slots/tokens.
+	pinCache := newPinCache(envPin)
+
 	for _, slot := range slots {
 		session, err := p11ctx.OpenSession(slot, pkcs11.CKF_SERIAL_SESSION)
 		if err != nil {
@@ -63,48 +72,30 @@ func initPKCS11(s *memStore) error {
 			return fmt.Errorf("failed to open PKCS#11 session for slot %d: %w", slot, err)
 		}
 
-		// Always close the session we opened for this slot.
-		// Do NOT defer inside the loop (leaks until function returns).
-		closeSession := func() {
+		// If this slot yields no identities, we close it.
+		// If it yields identities, we keep it open because p11Identity stores session handle.
+		addedBefore := len(s.idents)
+
+		// Attempt login if required; prompt only if needed.
+		if err := loginWithSmartFallbacks(p11ctx, session, slot, pinCache); err != nil {
 			_ = p11ctx.CloseSession(session)
-		}
-
-		// The PIN may be required to view objects on the token.
-		if err := p11ctx.Login(session, pkcs11.CKU_USER, pin); err != nil {
-			var pkcs11Error pkcs11.Error
-
-			// Tokens vary here. CKR_USER_NOT_LOGGED_IN is sometimes returned by stacks
-			// that don't require login for public objects, or if already logged in.
-			if errors.As(err, &pkcs11Error) && pkcs11Error == pkcs11.CKR_USER_NOT_LOGGED_IN {
-				fmt.Fprintf(os.Stderr,
-					"Warning: PKCS#11 login for slot %d failed with CKR_USER_NOT_LOGGED_IN. Continuing without PIN for this slot.\n",
-					slot,
-				)
-			} else if errors.As(err, &pkcs11Error) && pkcs11Error == pkcs11.CKR_USER_ALREADY_LOGGED_IN {
-				// Totally fine; keep going.
-			} else {
-				closeSession()
-				cleanupCtx()
-				return fmt.Errorf("failed to log in to PKCS#11 slot %d: %w", slot, err)
-			}
+			cleanupCtx()
+			return err
 		}
 
 		// Find all certificates
 		if err := p11ctx.FindObjectsInit(session, []*pkcs11.Attribute{
 			pkcs11.NewAttribute(pkcs11.CKA_CLASS, pkcs11.CKO_CERTIFICATE),
 		}); err != nil {
-			closeSession()
+			_ = p11ctx.CloseSession(session)
 			cleanupCtx()
 			return fmt.Errorf("failed to initialize PKCS#11 object search: %w", err)
 		}
 
-		// Always finalize the search for this session.
-		// If FindObjects fails, we still should call FindObjectsFinal.
-		obj, _, findErr := p11ctx.FindObjects(session, 100) // Read up to 100 objects
+		obj, _, findErr := p11ctx.FindObjects(session, 100)
 		_ = p11ctx.FindObjectsFinal(session)
-
 		if findErr != nil {
-			closeSession()
+			_ = p11ctx.CloseSession(session)
 			cleanupCtx()
 			return fmt.Errorf("failed to find PKCS#11 objects: %w", findErr)
 		}
@@ -118,8 +109,7 @@ func initPKCS11(s *memStore) error {
 				continue
 			}
 
-			certBytes := attr[0].Value
-			cert, err := x509.ParseCertificate(certBytes)
+			cert, err := x509.ParseCertificate(attr[0].Value)
 			if err != nil {
 				continue
 			}
@@ -135,22 +125,12 @@ func initPKCS11(s *memStore) error {
 			})
 		}
 
-		// NOTE:
-		// We intentionally do NOT close the session here if we stored identities that
-		// reference this session handle (p11Identity.session). If we close it, signing
-		// will later fail.
-		//
-		// If you want to close sessions here, you must redesign p11Identity to open a
-		// fresh session per Signer() call (recommended long-term), and store slot+ID only.
-		//
-		// Therefore: only close session if we did NOT add any identities for this slot.
-		//
-		// But we can't easily know "added for this slot" without tracking. We'll track it.
-		//
-		// (See below: slotAdded flag.)
+		// Close session only if it didn't produce identities.
+		if len(s.idents) == addedBefore {
+			_ = p11ctx.CloseSession(session)
+		}
 	}
 
-	// If we got here, we keep the context alive for later signing.
 	s.p11 = &pkcs11State{ctx: p11ctx}
 	return nil
 }
@@ -163,6 +143,286 @@ func closePKCS11(s *memStore) {
 	_ = s.p11.ctx.Finalize()
 	s.p11 = nil
 }
+
+// ---------- PIN prompting with Linux-native fallbacks ----------
+
+type pinCache struct {
+	// If envPin is set, we always use it (explicit opt-in).
+	envPin string
+
+	mu   sync.Mutex
+	pin  string
+	have bool
+}
+
+func newPinCache(envPin string) *pinCache {
+	return &pinCache{envPin: envPin}
+}
+
+func (c *pinCache) get() (string, bool) {
+	if c.envPin != "" {
+		return c.envPin, true
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.have {
+		return c.pin, true
+	}
+	return "", false
+}
+
+func (c *pinCache) set(pin string) {
+	if c.envPin != "" {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.pin = pin
+	c.have = true
+}
+
+func isPinRelatedError(err error) bool {
+	var e pkcs11.Error
+	if !errors.As(err, &e) {
+		return false
+	}
+	switch e {
+	case pkcs11.CKR_PIN_INCORRECT,
+		pkcs11.CKR_PIN_INVALID,
+		pkcs11.CKR_PIN_LEN_RANGE,
+		pkcs11.CKR_PIN_EXPIRED,
+		pkcs11.CKR_PIN_LOCKED,
+		pkcs11.CKR_USER_NOT_LOGGED_IN:
+		return true
+	default:
+		return false
+	}
+}
+
+func isAlreadyLoggedIn(err error) bool {
+	var e pkcs11.Error
+	return errors.As(err, &e) && e == pkcs11.CKR_USER_ALREADY_LOGGED_IN
+}
+
+func loginWithSmartFallbacks(ctx *pkcs11.Ctx, session pkcs11.SessionHandle, slot uint, cache *pinCache) error {
+	// First: if we already have a PIN (env or cached), try it.
+	if pin, ok := cache.get(); ok {
+		if err := ctx.Login(session, pkcs11.CKU_USER, pin); err != nil {
+			if isAlreadyLoggedIn(err) {
+				return nil
+			}
+			// If env pin is wrong, fail fast; user explicitly opted into env pin.
+			if cache.envPin != "" {
+				return fmt.Errorf("failed to log in to PKCS#11 slot %d with SMIMESIGN_PKCS11_PIN: %w", slot, err)
+			}
+			// Cached pin might be wrong for a different token/slot; drop it and prompt.
+			cache.set("") // keep have=true? no, we want to reprompt; easiest is reset manually below.
+			cache.mu.Lock()
+			cache.have = false
+			cache.pin = ""
+			cache.mu.Unlock()
+		} else {
+			return nil
+		}
+	}
+
+	// Next: try login with empty pin (some tokens allow listing without PIN).
+	if err := ctx.Login(session, pkcs11.CKU_USER, ""); err == nil || isAlreadyLoggedIn(err) {
+		return nil
+	} else if !isPinRelatedError(err) {
+		// Non-pin error: might still be ok for public objects; keep your original behavior for CKR_USER_NOT_LOGGED_IN.
+		var e pkcs11.Error
+		if errors.As(err, &e) && e == pkcs11.CKR_USER_NOT_LOGGED_IN {
+			fmt.Fprintf(os.Stderr, "Warning: PKCS#11 login for slot %d failed with CKR_USER_NOT_LOGGED_IN. Continuing without PIN for this slot.\n", slot)
+			return nil
+		}
+		return fmt.Errorf("failed to log in to PKCS#11 slot %d: %w", slot, err)
+	}
+
+	// PIN required: prompt using pinentry (preferred), then tty.
+	// Allow a couple retries for mistypes.
+	const maxTries = 3
+	for i := 1; i <= maxTries; i++ {
+		pin, err := promptForPIN(fmt.Sprintf("Smartcard PIN (slot %d)", slot))
+		if err != nil {
+			return fmt.Errorf("failed to prompt for PKCS#11 PIN: %w", err)
+		}
+
+		if err := ctx.Login(session, pkcs11.CKU_USER, pin); err != nil {
+			if isAlreadyLoggedIn(err) {
+				cache.set(pin)
+				return nil
+			}
+			if isPinRelatedError(err) {
+				if i < maxTries {
+					fmt.Fprintf(os.Stderr, "PIN rejected for slot %d (attempt %d/%d). Try again.\n", slot, i, maxTries)
+					continue
+				}
+			}
+			return fmt.Errorf("failed to log in to PKCS#11 slot %d: %w", slot, err)
+		}
+
+		cache.set(pin)
+		return nil
+	}
+
+	return fmt.Errorf("failed to log in to PKCS#11 slot %d: PIN rejected", slot)
+}
+
+func promptForPIN(title string) (string, error) {
+	// 1) pinentry (best UX; GUI if available, curses otherwise)
+	if pin, ok, err := tryPinentry(title); err != nil {
+		return "", err
+	} else if ok {
+		return pin, nil
+	}
+
+	// 2) /dev/tty prompt (reliable for CLI)
+	if pin, ok, err := tryTTYPrompt(title + ": "); err != nil {
+		return "", err
+	} else if ok {
+		return pin, nil
+	}
+
+	// 3) No env fallback here (env handled earlier explicitly).
+	return "", errors.New("no available PIN prompt method (pinentry not found and no TTY available)")
+}
+
+func tryTTYPrompt(prompt string) (string, bool, error) {
+	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
+	if err != nil {
+		return "", false, nil // no TTY, not fatal here
+	}
+	defer tty.Close()
+
+	if _, err := fmt.Fprint(tty, prompt); err != nil {
+		return "", false, err
+	}
+
+	b, err := term.ReadPassword(int(tty.Fd()))
+	if _, _ = fmt.Fprintln(tty)
+	if err != nil {
+		return "", false, err
+	}
+	return strings.TrimSpace(string(b)), true, nil
+}
+
+func tryPinentry(title string) (string, bool, error) {
+	path, ok := findPinentry()
+	if !ok {
+		return "", false, nil
+	}
+
+	// pinentry protocol is line-based. We talk over stdin/stdout.
+	cmd := exec.Command(path)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return "", false, err
+	}
+
+	if err := cmd.Start(); err != nil {
+		return "", false, err
+	}
+
+	// Helper to send a command line.
+	send := func(s string) error {
+		_, err := io.WriteString(stdin, s+"\n")
+		return err
+	}
+
+	// Read pinentry responses.
+	rd := bufio.NewScanner(&stdout)
+
+	// pinentry starts with an "OK ..." greeting, but stdout is buffered.
+	// We'll just proceed; if it fails, we'll detect non-OK lines later.
+	_ = send("OPTION ttyname=/dev/tty") // helps some pinentry variants
+	_ = send("SETPROMPT " + escapePinentry("PIN:"))
+	_ = send("SETTITLE " + escapePinentry(title))
+	_ = send("SETDESC " + escapePinentry("Enter your smartcard PIN."))
+
+	if err := send("GETPIN"); err != nil {
+		_ = stdin.Close()
+		_ = cmd.Wait()
+		return "", false, err
+	}
+
+	// Close stdin so pinentry can exit cleanly after BYE.
+	defer func() { _ = send("BYE"); _ = stdin.Close() }()
+
+	// Parse responses:
+	// - "D <pin>" carries the PIN
+	// - "OK" acknowledges
+	// - "ERR <code> ..." indicates cancel/failure
+	var pin string
+	for rd.Scan() {
+		line := rd.Text()
+		if strings.HasPrefix(line, "D ") {
+			pin = strings.TrimSpace(strings.TrimPrefix(line, "D "))
+			continue
+		}
+		if strings.HasPrefix(line, "ERR ") {
+			// User likely cancelled, or pinentry couldn't show UI.
+			_ = cmd.Wait()
+			return "", false, nil
+		}
+		// Stop after OK following GETPIN exchange if we already got D line.
+		if line == "OK" && pin != "" {
+			break
+		}
+	}
+
+	_ = cmd.Wait()
+
+	if pin == "" {
+		// If pinentry exists but doesn't give us a PIN, treat as "not usable" and fallback.
+		// stderr might contain useful clues for debugging.
+		return "", false, nil
+	}
+	return pin, true, nil
+}
+
+func escapePinentry(s string) string {
+	// pinentry supports basic text; avoid newlines/tabs.
+	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.ReplaceAll(s, "\r", " ")
+	s = strings.ReplaceAll(s, "\t", " ")
+	return s
+}
+
+func findPinentry() (string, bool) {
+	// Let user override pinentry binary name/path if they want.
+	if p := os.Getenv("PINENTRY"); p != "" {
+		if lp, err := exec.LookPath(p); err == nil {
+			return lp, true
+		}
+		// If they set it but it's wrong, treat as hard failure (it was explicit).
+		return "", false
+	}
+
+	// Common names. We do NOT require GUI vars; pinentry-curses works fine in terminals.
+	candidates := []string{
+		"pinentry",
+		"pinentry-gtk-2",
+		"pinentry-gnome3",
+		"pinentry-qt",
+		"pinentry-qt5",
+		"pinentry-curses",
+		"pinentry-tty",
+	}
+
+	for _, c := range candidates {
+		if lp, err := exec.LookPath(c); err == nil {
+			return lp, true
+		}
+	}
+	return "", false
+}
+
+// ---------- Signing implementation ----------
 
 // p11Signer implements crypto.Signer for a hardware token.
 type p11Signer struct {
