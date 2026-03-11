@@ -94,6 +94,8 @@ export SMIMESIGN_PKCS11_PIN=your_smartcard_pin
 ```
 **Note:** Replace `/usr/lib/x86_64-linux-gnu/opensc-pkcs11.so` with the actual path to your PKCS#11 module. You may need to install `opensc` or other smart card middleware for this to work.
 
+If you do not want to keep the PIN in an environment variable, use a wrapper script that prompts on the terminal and then execs `smimesign` with `SMIMESIGN_PKCS11_PIN` exported for that invocation only. This is the most practical setup when Git invokes `smimesign` automatically for `git commit -S` and signed tags.
+
 
 ### Building from source
 
@@ -196,6 +198,9 @@ $ git config --local gpg.format x509
 ```bash
 $ git config --global gpg.x509.program smimesign
 $ git config --global gpg.format x509
+$ git config --global commit.gpgsign true
+$ git config --global tag.gpgSign true
+$ git config --global log.showSignature true
 ```
 
 ### Git versions 2.18 and older
@@ -263,6 +268,22 @@ Example of creating a detached signature and verifying it:
 $ smimesign --sign -u user@example.com -b file.txt > file.txt.sig
 $ smimesign --verify file.txt.sig file.txt
 ```
+
+If the signature is cryptographically valid but the issuing CA is not trusted locally, `smimesign --verify` reports a good signature together with a trust warning and exits successfully. This distinguishes "the signature is valid" from "the certificate chain is trusted on this machine".
+
+To resolve an unknown-authority warning, install the issuing CA certificate into the host trust store:
+
+```bash
+# RHEL / Fedora / CentOS
+sudo cp company-ca.pem /etc/pki/ca-trust/source/anchors/
+sudo update-ca-trust
+
+# Debian / Ubuntu
+sudo cp company-ca.pem /usr/local/share/ca-certificates/company-ca.crt
+sudo update-ca-certificates
+```
+
+After installing the CA, rerun `smimesign --verify` or `git log --show-signature`.
 
 Extract certificates embedded in a signature (outputs PEM to stdout):
 
