@@ -61,31 +61,19 @@ func verifyAttached() error {
 	// Verify signature
 	chains, err := sd.Verify(verifyOpts())
 	if err != nil {
+		if trustErr, ok := err.(x509.UnknownAuthorityError); ok {
+			return verifyAttachedWithUntrustedCert(sd, trustErr)
+		}
 		if len(chains) > 0 {
 			emitBadSig(chains)
 		} else {
-			// TODO: We're omitting a bunch of arguments here.
 			sErrSig.emit()
 		}
 
 		return errors.Wrap(err, "failed to verify signature")
 	}
 
-	var (
-		cert = chains[0][0][0]
-		fpr  = certHexFingerprint(cert)
-		subj = cert.Subject.String()
-	)
-
-	fmt.Fprintf(stderr, "smimesign: Signature made using certificate ID 0x%s\n", fpr)
-	emitGoodSig(chains)
-
-	// TODO: Maybe split up signature checking and certificate checking so we can
-	// output something more meaningful.
-	fmt.Fprintf(stderr, "smimesign: Good signature from \"%s\"\n", subj)
-	emitTrustFully()
-
-	return nil
+	return reportSuccessfulVerification(chains)
 }
 
 func verifyDetached() error {
@@ -137,31 +125,19 @@ func verifyDetached() error {
 
 	chains, err := sd.VerifyDetached(buf.Bytes(), verifyOpts())
 	if err != nil {
+		if trustErr, ok := err.(x509.UnknownAuthorityError); ok {
+			return verifyDetachedWithUntrustedCert(sd, buf.Bytes(), trustErr)
+		}
 		if len(chains) > 0 {
 			emitBadSig(chains)
 		} else {
-			// TODO: We're omitting a bunch of arguments here.
 			sErrSig.emit()
 		}
 
 		return errors.Wrap(err, "failed to verify signature")
 	}
 
-	var (
-		cert = chains[0][0][0]
-		fpr  = certHexFingerprint(cert)
-		subj = cert.Subject.String()
-	)
-
-	fmt.Fprintf(stderr, "smimesign: Signature made using certificate ID 0x%s\n", fpr)
-	emitGoodSig(chains)
-
-	// TODO: Maybe split up signature checking and certificate checking so we can
-	// output something more meaningful.
-	fmt.Fprintf(stderr, "smimesign: Good signature from \"%s\"\n", subj)
-	emitTrustFully()
-
-	return nil
+	return reportSuccessfulVerification(chains)
 }
 
 func verifyOpts() x509.VerifyOptions {
@@ -186,4 +162,51 @@ func verifyOpts() x509.VerifyOptions {
 		Roots:     roots,
 		KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageAny},
 	}
+}
+
+func reportSuccessfulVerification(chains [][][]*x509.Certificate) error {
+	cert := chains[0][0][0]
+	fpr := certHexFingerprint(cert)
+	subj := cert.Subject.String()
+
+	fmt.Fprintf(stderr, "smimesign: Signature made using certificate ID 0x%s\n", fpr)
+	emitGoodSig(chains)
+	fmt.Fprintf(stderr, "smimesign: Good signature from \"%s\"\n", subj)
+	emitTrustFully()
+	return nil
+}
+
+func verifyAttachedWithUntrustedCert(sd *cms.SignedData, trustErr x509.UnknownAuthorityError) error {
+	chains, err := sd.VerifySignatureOnly()
+	if err != nil {
+		sErrSig.emit()
+		return errors.Wrap(trustErr, "failed to verify signature")
+	}
+	return reportUntrustedButValidSignature(chains, trustErr)
+}
+
+func verifyDetachedWithUntrustedCert(sd *cms.SignedData, message []byte, trustErr x509.UnknownAuthorityError) error {
+	chains, err := sd.VerifyDetachedSignatureOnly(message)
+	if err != nil {
+		sErrSig.emit()
+		return errors.Wrap(trustErr, "failed to verify signature")
+	}
+	return reportUntrustedButValidSignature(chains, trustErr)
+}
+
+func reportUntrustedButValidSignature(chains [][][]*x509.Certificate, trustErr x509.UnknownAuthorityError) error {
+	cert := chains[0][0][0]
+	fpr := certHexFingerprint(cert)
+	subj := cert.Subject.String()
+
+	fmt.Fprintf(stderr, "smimesign: Signature made using certificate ID 0x%s\n", fpr)
+	emitGoodSig(chains)
+	fmt.Fprintf(stderr, "smimesign: Good signature from \"%s\"\n", subj)
+	emitTrustUndefined("unknown authority")
+	fmt.Fprintf(stderr, "smimesign: WARNING: certificate chain is not trusted: %v\n", trustErr)
+	fmt.Fprintf(stderr, "smimesign: To trust this signer, install the issuing CA certificate into your system trust store.\n")
+	fmt.Fprintf(stderr, "smimesign: On RHEL/Fedora/CentOS, copy the CA PEM to /etc/pki/ca-trust/source/anchors/ and run update-ca-trust.\n")
+	fmt.Fprintf(stderr, "smimesign: On Debian/Ubuntu, copy the CA PEM to /usr/local/share/ca-certificates/ and run update-ca-certificates.\n")
+	fmt.Fprintf(stderr, "smimesign: Then rerun verification.\n")
+	return nil
 }

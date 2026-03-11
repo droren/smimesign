@@ -4,10 +4,14 @@ package certstore
 
 import (
 	"crypto"
+	"crypto/ecdsa"
+	"crypto/rsa"
 	"crypto/x509"
+	"encoding/asn1"
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"os"
 
 	"github.com/miekg/pkcs11"
@@ -127,6 +131,9 @@ func initPKCS11(s *memStore) error {
 			s.idents = append(s.idents, &memIdentity{
 				store: s,
 				cert:  cert,
+				// PKCS#11 tokens typically expose only the leaf cert here. Include it in
+				// the identity chain so signatures embed at least the signer certificate.
+				chain: []*x509.Certificate{cert},
 				p11: &p11Identity{
 					ctx:     p11ctx,
 					session: session,
@@ -178,10 +185,106 @@ func (s *p11Signer) Public() crypto.PublicKey {
 }
 
 func (s *p11Signer) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
+	input := digest
+	switch s.pub.(type) {
+	case *rsa.PublicKey:
+		var err error
+		input, err = pkcs1DigestInfo(opts.HashFunc(), digest)
+		if err != nil {
+			return nil, err
+		}
+	case *ecdsa.PublicKey:
+		// CKM_ECDSA returns a raw r||s signature. Re-encode it to ASN.1 so it
+		// satisfies crypto.Signer callers and x509 verification routines.
+		raw, err := s.sign(inputDigestForECDSA(digest), opts)
+		if err != nil {
+			return nil, err
+		}
+		return asn1EncodeECDSASignature(raw)
+	}
+
+	return s.sign(input, opts)
+}
+
+func (s *p11Signer) sign(input []byte, opts crypto.SignerOpts) ([]byte, error) {
 	if err := s.ctx.SignInit(s.sess, s.mech, s.priv); err != nil {
 		return nil, fmt.Errorf("PKCS#11 signing initialization failed: %w", err)
 	}
-	return s.ctx.Sign(s.sess, digest)
+	return s.ctx.Sign(s.sess, input)
+}
+
+func inputDigestForECDSA(digest []byte) []byte {
+	return digest
+}
+
+type ecdsaSignature struct {
+	R, S *big.Int
+}
+
+func asn1EncodeECDSASignature(raw []byte) ([]byte, error) {
+	if len(raw) == 0 || len(raw)%2 != 0 {
+		return nil, fmt.Errorf("invalid raw ECDSA signature length: %d", len(raw))
+	}
+
+	n := len(raw) / 2
+	return asn1.Marshal(ecdsaSignature{
+		R: new(big.Int).SetBytes(raw[:n]),
+		S: new(big.Int).SetBytes(raw[n:]),
+	})
+}
+
+func pkcs1DigestInfo(hash crypto.Hash, digest []byte) ([]byte, error) {
+	prefix, err := pkcs1DigestInfoPrefix(hash)
+	if err != nil {
+		return nil, err
+	}
+	if hash.Size() != 0 && len(digest) != hash.Size() {
+		return nil, fmt.Errorf("invalid digest length for hash algorithm: expected %d, got %d", hash.Size(), len(digest))
+	}
+
+	out := make([]byte, 0, len(prefix)+len(digest))
+	out = append(out, prefix...)
+	out = append(out, digest...)
+	return out, nil
+}
+
+func pkcs1DigestInfoPrefix(hash crypto.Hash) ([]byte, error) {
+	switch hash {
+	case crypto.SHA1:
+		return []byte{
+			0x30, 0x21,
+			0x30, 0x09,
+			0x06, 0x05, 0x2b, 0x0e, 0x03, 0x02, 0x1a,
+			0x05, 0x00,
+			0x04, 0x14,
+		}, nil
+	case crypto.SHA256:
+		return []byte{
+			0x30, 0x31,
+			0x30, 0x0d,
+			0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01,
+			0x05, 0x00,
+			0x04, 0x20,
+		}, nil
+	case crypto.SHA384:
+		return []byte{
+			0x30, 0x41,
+			0x30, 0x0d,
+			0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x02,
+			0x05, 0x00,
+			0x04, 0x30,
+		}, nil
+	case crypto.SHA512:
+		return []byte{
+			0x30, 0x51,
+			0x30, 0x0d,
+			0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x03,
+			0x05, 0x00,
+			0x04, 0x40,
+		}, nil
+	default:
+		return nil, ErrUnsupportedHash
+	}
 }
 
 // Signer returns a crypto.Signer that uses the private key on the hardware token.

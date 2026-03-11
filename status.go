@@ -118,7 +118,8 @@ const (
 	//
 	//   Note that the term =TRUST_= in the status names is used for
 	//   historic reasons; we now speak of validity.
-	sTrustFully status = "TRUST_FULLY"
+	sTrustFully     status = "TRUST_FULLY"
+	sTrustUndefined status = "TRUST_UNDEFINED"
 )
 
 var (
@@ -237,4 +238,8 @@ func emitBadSig(chains [][][]*x509.Certificate) {
 
 func emitTrustFully() {
 	sTrustFully.emitf("0 shell")
+}
+
+func emitTrustUndefined(reason string) {
+	sTrustUndefined.emitf("%s", reason)
 }

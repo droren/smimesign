@@ -41,6 +41,30 @@ func (sd *SignedData) VerifyDetached(message []byte, opts x509.VerifyOptions) ([
 	return sd.verify(message, opts)
 }
 
+// VerifyDetachedSignatureOnly verifies the detached signature cryptographically
+// without requiring the signing certificate to chain to a trusted root. It
+// returns the signer certificates embedded in the SignedData.
+func (sd *SignedData) VerifyDetachedSignatureOnly(message []byte) ([][][]*x509.Certificate, error) {
+	if sd.psd.EncapContentInfo.EContent.Bytes != nil {
+		return nil, errors.New("signature not detached")
+	}
+	return sd.verifySignatureOnly(message)
+}
+
+// VerifySignatureOnly verifies an attached signature cryptographically without
+// requiring the signing certificate to chain to a trusted root. It returns the
+// signer certificates embedded in the SignedData.
+func (sd *SignedData) VerifySignatureOnly() ([][][]*x509.Certificate, error) {
+	econtent, err := sd.psd.EncapContentInfo.EContentValue()
+	if err != nil {
+		return nil, err
+	}
+	if econtent == nil {
+		return nil, errors.New("detached signature")
+	}
+	return sd.verifySignatureOnly(econtent)
+}
+
 func (sd *SignedData) verify(econtent []byte, opts x509.VerifyOptions) ([][][]*x509.Certificate, error) {
 	if len(sd.psd.SignerInfos) == 0 {
 		return nil, protocol.ASN1Error{Message: "no signatures found"}
@@ -170,5 +194,75 @@ func (sd *SignedData) verify(econtent []byte, opts x509.VerifyOptions) ([][][]*x
 	}
 
 	// OK
+	return chains, nil
+}
+
+func (sd *SignedData) verifySignatureOnly(econtent []byte) ([][][]*x509.Certificate, error) {
+	if len(sd.psd.SignerInfos) == 0 {
+		return nil, protocol.ASN1Error{Message: "no signatures found"}
+	}
+
+	certs, err := sd.psd.X509Certificates()
+	if err != nil {
+		return nil, err
+	}
+
+	chains := make([][][]*x509.Certificate, 0, len(sd.psd.SignerInfos))
+
+	for _, si := range sd.psd.SignerInfos {
+		var signedMessage []byte
+
+		if si.SignedAttrs == nil {
+			if !sd.psd.EncapContentInfo.IsTypeData() {
+				return nil, protocol.ASN1Error{Message: "missing SignedAttrs"}
+			}
+			signedMessage = econtent
+		} else {
+			siContentType, err := si.GetContentTypeAttribute()
+			if err != nil {
+				return nil, err
+			}
+			if !siContentType.Equal(sd.psd.EncapContentInfo.EContentType) {
+				return nil, protocol.ASN1Error{Message: "invalid SignerInfo ContentType attribute"}
+			}
+
+			hash, err := si.Hash()
+			if err != nil {
+				return nil, err
+			}
+			actualMessageDigest := hash.New()
+			if _, err = actualMessageDigest.Write(econtent); err != nil {
+				return nil, err
+			}
+
+			messageDigestAttr, err := si.GetMessageDigestAttribute()
+			if err != nil {
+				return nil, err
+			}
+			if !bytes.Equal(messageDigestAttr, actualMessageDigest.Sum(nil)) {
+				return nil, errors.New("invalid message digest")
+			}
+
+			if signedMessage, err = si.SignedAttrs.MarshaledForVerification(); err != nil {
+				return nil, err
+			}
+		}
+
+		cert, err := si.FindCertificate(certs)
+		if err != nil {
+			return nil, err
+		}
+
+		algo := si.X509SignatureAlgorithm()
+		if algo == x509.UnknownSignatureAlgorithm {
+			return nil, protocol.ErrUnsupported
+		}
+		if err := cert.CheckSignature(algo, signedMessage, si.Signature); err != nil {
+			return nil, err
+		}
+
+		chains = append(chains, [][]*x509.Certificate{{cert}})
+	}
+
 	return chains, nil
 }
