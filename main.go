@@ -75,28 +75,17 @@ func runCommand() error {
 		return nil
 	}
 
-	// Open certificate store
-	store, err := certstore.Open()
-	if err != nil {
-		return errors.Wrap(err, "failed to open certificate store")
-	}
-	defer store.Close()
-
-	// Get list of identities
-	idents, err = store.Identities()
-	if err != nil {
-		return errors.Wrap(err, "failed to get identities from certificate store")
-	}
-	for _, ident := range idents {
-		defer ident.Close()
-	}
-
 	if *signFlag {
 		if *verifyFlag || *dumpCertsFlag || *listKeysFlag {
 			return errors.New("specify --help, --sign, --verify, --dump-certs, or --list-keys")
 		} else if len(*localUserOpt) == 0 {
 			return errors.New("specify a USER-ID to sign with")
 		} else {
+			cleanup, err := openIdentities()
+			if err != nil {
+				return err
+			}
+			defer cleanup()
 			return commandSign()
 		}
 	}
@@ -113,6 +102,11 @@ func runCommand() error {
 		} else if *armorFlag {
 			return errors.New("armor cannot be specified for verification")
 		} else {
+			cleanup, err := openIdentities()
+			if err != nil {
+				return err
+			}
+			defer cleanup()
 			return commandVerify()
 		}
 	}
@@ -145,6 +139,11 @@ func runCommand() error {
 		} else if *armorFlag {
 			return errors.New("armor cannot be specified for list-keys")
 		} else {
+			cleanup, err := openIdentities()
+			if err != nil {
+				return err
+			}
+			defer cleanup()
 			return commandListKeys()
 		}
 	}
@@ -161,9 +160,35 @@ func runCommand() error {
 		} else if *armorFlag {
 			return errors.New("armor cannot be specified for list-smartcard-keys")
 		} else {
+			cleanup, err := openIdentities()
+			if err != nil {
+				return err
+			}
+			defer cleanup()
 			return commandListSmartcardKeys()
 		}
 	}
 
 	return errors.New("specify --help, --sign, --verify, --dump-certs, or --list-keys")
+}
+
+func openIdentities() (func(), error) {
+	store, err := certstore.Open()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to open certificate store")
+	}
+
+	openedIdents, err := store.Identities()
+	if err != nil {
+		store.Close()
+		return nil, errors.Wrap(err, "failed to get identities from certificate store")
+	}
+
+	idents = openedIdents
+	return func() {
+		for _, ident := range idents {
+			ident.Close()
+		}
+		store.Close()
+	}, nil
 }

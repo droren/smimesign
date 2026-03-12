@@ -244,7 +244,33 @@ func TestFindUserIdentityRequiresCertID(t *testing.T) {
 	got, err := findUserIdentity()
 	require.Error(t, err)
 	require.Nil(t, got)
-	require.Contains(t, err.Error(), "Use --cert-id")
+	require.Contains(t, err.Error(), "Set SMIMESIGN_CERT_ID")
+}
+
+func TestFindUserIdentityPrefersSigningIdentity(t *testing.T) {
+	defer testSetup(t, "--sign", "-u", "alice@example.com")()
+
+	authIdent := intermediate.Issue(
+		fakeca.Subject(pkix.Name{CommonName: "alice@example.com"}),
+		fakeca.KeyUsage(x509.KeyUsageDigitalSignature|x509.KeyUsageKeyEncipherment),
+	)
+	authIdent.Certificate.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}
+	signIdent := intermediate.Issue(
+		fakeca.Subject(pkix.Name{CommonName: "alice@example.com"}),
+		fakeca.KeyUsage(x509.KeyUsageContentCommitment),
+	)
+
+	idents = []certstore.Identity{identity{authIdent}, identity{signIdent}}
+
+	got, err := findUserIdentity()
+	require.NoError(t, err)
+	require.NotNil(t, got)
+
+	cert, err := got.Certificate()
+	require.NoError(t, err)
+	require.True(t, cert.Equal(signIdent.Certificate))
+	require.Contains(t, stderrBuf.String(), "Set SMIMESIGN_CERT_ID=")
+	require.Contains(t, stderrBuf.String(), certHexFingerprint(signIdent.Certificate))
 }
 
 func TestFindUserIdentitySelectsByCertID(t *testing.T) {
@@ -275,6 +301,25 @@ func TestFindUserIdentityCertIDNoMatch(t *testing.T) {
 	require.Error(t, err)
 	require.Nil(t, got)
 	require.Contains(t, err.Error(), "does not match any identity")
+}
+
+func TestFindUserIdentityAmbiguousMessagePrefersEnvOverride(t *testing.T) {
+	defer testSetup(t, "--sign", "-u", "alice@example.com")()
+
+	identA := intermediate.Issue(
+		fakeca.Subject(pkix.Name{CommonName: "alice@example.com"}),
+		fakeca.KeyUsage(x509.KeyUsageDigitalSignature),
+	)
+	identB := intermediate.Issue(
+		fakeca.Subject(pkix.Name{CommonName: "alice@example.com"}),
+		fakeca.KeyUsage(x509.KeyUsageDigitalSignature),
+	)
+	idents = []certstore.Identity{identity{identA}, identity{identB}}
+
+	got, err := findUserIdentity()
+	require.Error(t, err)
+	require.Nil(t, got)
+	require.Contains(t, err.Error(), "Set SMIMESIGN_CERT_ID")
 }
 
 func TestFindUserIdentitySelectsByEnvCertID(t *testing.T) {

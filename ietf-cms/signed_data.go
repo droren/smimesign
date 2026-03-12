@@ -54,6 +54,26 @@ func (sd *SignedData) GetCertificates() ([]*x509.Certificate, error) {
 	return sd.psd.X509Certificates()
 }
 
+// GetSignerCertificates gets the embedded certificates that correspond to the
+// SignerInfos contained in this SignedData.
+func (sd *SignedData) GetSignerCertificates() ([]*x509.Certificate, error) {
+	certs, err := sd.psd.X509Certificates()
+	if err != nil {
+		return nil, err
+	}
+
+	signers := make([]*x509.Certificate, 0, len(sd.psd.SignerInfos))
+	for _, si := range sd.psd.SignerInfos {
+		cert, err := si.FindCertificate(certs)
+		if err != nil {
+			return nil, err
+		}
+		signers = append(signers, cert)
+	}
+
+	return signers, nil
+}
+
 // SetCertificates replaces the certificates stored in the SignedData with new
 // ones.
 func (sd *SignedData) SetCertificates(certs []*x509.Certificate) error {

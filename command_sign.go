@@ -167,7 +167,16 @@ func findUserIdentity() (certstore.Identity, error) {
 	}
 
 	if len(matches) > 1 {
-		return nil, fmt.Errorf("multiple identities match %q. Use --cert-id to select one: %s", *localUserOpt, strings.Join(identityInfo(matches), ", "))
+		if preferred, reason, ok := preferSigningIdentity(matches); ok {
+			fmt.Fprintf(stderr, "smimesign: WARNING: multiple identities match %q; selecting %s (%s). Set SMIMESIGN_CERT_ID=%s to make this choice explicit.\n",
+				*localUserOpt,
+				preferred.cert.Subject.CommonName,
+				reason,
+				certHexFingerprint(preferred.cert),
+			)
+			return preferred.ident, nil
+		}
+		return nil, fmt.Errorf("multiple identities match %q. Set SMIMESIGN_CERT_ID to the desired fingerprint (or use --cert-id for a one-off selection): %s", *localUserOpt, strings.Join(identityInfo(matches), ", "))
 	}
 
 	return matches[0].ident, nil
@@ -178,6 +187,93 @@ func certIDSelectionError(userID, certID string, filtered []identityMatch) strin
 		return fmt.Sprintf("cert-id %q does not match any identity for %q. Available identities", certID, userID)
 	}
 	return fmt.Sprintf("cert-id %q matches multiple identities for %q (use a longer id). Matching identities", certID, userID)
+}
+
+func preferSigningIdentity(matches []identityMatch) (identityMatch, string, bool) {
+	if len(matches) == 0 {
+		return identityMatch{}, "", false
+	}
+
+	best := matches[0]
+	bestScore := signingPreferenceScore(best.cert)
+	tied := false
+
+	for _, entry := range matches[1:] {
+		score := signingPreferenceScore(entry.cert)
+		if score > bestScore {
+			best = entry
+			bestScore = score
+			tied = false
+			continue
+		}
+		if score == bestScore {
+			tied = true
+		}
+	}
+
+	if tied || bestScore <= 0 {
+		return identityMatch{}, "", false
+	}
+
+	return best, signingPreferenceReason(best.cert), true
+}
+
+func signingPreferenceScore(cert *x509.Certificate) int {
+	if cert == nil {
+		return 0
+	}
+
+	score := 0
+	if cert.KeyUsage&x509.KeyUsageContentCommitment != 0 {
+		score += 100
+	}
+	if cert.KeyUsage&x509.KeyUsageDigitalSignature != 0 {
+		score += 25
+	}
+	if cert.KeyUsage&x509.KeyUsageKeyEncipherment != 0 {
+		score -= 5
+	}
+
+	for _, usage := range cert.ExtKeyUsage {
+		switch usage {
+		case x509.ExtKeyUsageCodeSigning, x509.ExtKeyUsageEmailProtection, x509.ExtKeyUsageTimeStamping:
+			score += 20
+		case x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth:
+			score -= 15
+		}
+	}
+
+	return score
+}
+
+func signingPreferenceReason(cert *x509.Certificate) string {
+	if cert == nil {
+		return "preferred signing identity"
+	}
+
+	var parts []string
+	if cert.KeyUsage&x509.KeyUsageContentCommitment != 0 {
+		parts = append(parts, "preferred for signing because it has KU=contentCommitment")
+	}
+	if cert.KeyUsage&x509.KeyUsageDigitalSignature != 0 && cert.KeyUsage&x509.KeyUsageContentCommitment == 0 {
+		parts = append(parts, "preferred for signing because it has KU=digitalSignature")
+	}
+	if hasExtKeyUsage(cert, x509.ExtKeyUsageClientAuth) {
+		parts = append(parts, "clientAuth identities are deprioritized")
+	}
+	if len(parts) == 0 {
+		return "preferred signing identity"
+	}
+	return strings.Join(parts, "; ")
+}
+
+func hasExtKeyUsage(cert *x509.Certificate, want x509.ExtKeyUsage) bool {
+	for _, usage := range cert.ExtKeyUsage {
+		if usage == want {
+			return true
+		}
+	}
+	return false
 }
 
 func identityInfo(matches []identityMatch) []string {
