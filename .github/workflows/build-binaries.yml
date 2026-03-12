@@ -143,16 +143,12 @@ jobs:
         shell: bash
         run: |
           GOOS=windows GOARCH=amd64 go build -o build/amd64/smimesign.exe -ldflags "-X main.versionString=${{ env.GIT_VERSION }}" .
-          GOOS=windows GOARCH=386 go build -o build/386/smimesign.exe -ldflags "-X main.versionString=${{ env.GIT_VERSION }}" .
           GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o build/amd64/git-x509-cert.exe ./cmd/git-x509-cert
-          GOOS=windows GOARCH=386 CGO_ENABLED=0 go build -o build/386/git-x509-cert.exe ./cmd/git-x509-cert
       - name: Sign binaries
         if: ${{ env.PFX_PASSWORD != '' }}
         run: |
           .\windows-installer\signtool.exe sign /tr http://timestamp.digicert.com /td sha256 /fd sha256 /p ${{ env.PFX_PASSWORD }} /f windows-installer\codesign.pfx build\amd64\smimesign.exe
-          .\windows-installer\signtool.exe sign /tr http://timestamp.digicert.com /td sha256 /fd sha256 /p ${{ env.PFX_PASSWORD }} /f windows-installer\codesign.pfx build\386\smimesign.exe
           .\windows-installer\signtool.exe sign /tr http://timestamp.digicert.com /td sha256 /fd sha256 /p ${{ env.PFX_PASSWORD }} /f windows-installer\codesign.pfx build\amd64\git-x509-cert.exe
-          .\windows-installer\signtool.exe sign /tr http://timestamp.digicert.com /td sha256 /fd sha256 /p ${{ env.PFX_PASSWORD }} /f windows-installer\codesign.pfx build\386\git-x509-cert.exe
       - name: Install Inno Setup
         run: |
           choco install innosetup --no-progress -y
@@ -170,19 +166,15 @@ jobs:
       - name: Create zip archives for release upload
         shell: bash
         run: |
-          mkdir -p build/amd64/package build/386/package
+          mkdir -p build/amd64/package
           cp build/amd64/smimesign.exe build/amd64/package/smimesign.exe
           cp build/amd64/git-x509-cert.exe build/amd64/package/git-x509-cert.exe
-          cp build/386/smimesign.exe build/386/package/smimesign.exe
-          cp build/386/git-x509-cert.exe build/386/package/git-x509-cert.exe
           powershell -Command "Compress-Archive -Path build/amd64/package/* -DestinationPath build/amd64/smimesign-windows-amd64-${{ env.GIT_VERSION }}.zip"
-          powershell -Command "Compress-Archive -Path build/386/package/* -DestinationPath build/386/smimesign-windows-386-${{ env.GIT_VERSION }}.zip"
       - name: Upload Windows files to the release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             build/amd64/smimesign-windows-amd64-${{ env.GIT_VERSION }}.zip
-            build/386/smimesign-windows-386-${{ env.GIT_VERSION }}.zip
             build/installer/smimesign-windows-${{ env.GIT_VERSION }}.exe
   build-container-image:
     runs-on: ubuntu-latest

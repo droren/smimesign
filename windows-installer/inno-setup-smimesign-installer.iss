@@ -3,19 +3,9 @@
 #define MyGitVersion GetEnv("GIT_VERSION")
 #define MyBareGitVersion GetEnv("BARE_GIT_VERSION")
 
-#define PathToX86Binary "../build/386/smimesign.exe"
-#ifnexist PathToX86Binary
-  #pragma error PathToX86Binary + " does not exist, please build it first."
-#endif
-
 #define PathToX64Binary "../build/amd64/smimesign.exe"
 #ifnexist PathToX64Binary
   #pragma error PathToX64Binary + " does not exist, please build it first."
-#endif
-
-#define PathToX86Helper "../build/386/git-x509-cert.exe"
-#ifnexist PathToX86Helper
-  #pragma error PathToX86Helper + " does not exist, please build it first."
 #endif
 
 #define PathToX64Helper "../build/amd64/git-x509-cert.exe"
@@ -57,10 +47,8 @@ VersionInfoVersion={#MyBareGitVersion}
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Files]
-Source: {#PathToX86Binary}; DestDir: "{app}"; Flags: ignoreversion; DestName: "smimesign.exe"; Check: not Is64BitInstallMode
-Source: {#PathToX64Binary}; DestDir: "{app}"; Flags: ignoreversion; DestName: "smimesign.exe"; Check: Is64BitInstallMode
-Source: {#PathToX86Helper}; DestDir: "{app}"; Flags: ignoreversion; DestName: "git-x509-cert.exe"; Check: not Is64BitInstallMode
-Source: {#PathToX64Helper}; DestDir: "{app}"; Flags: ignoreversion; DestName: "git-x509-cert.exe"; Check: Is64BitInstallMode
+Source: {#PathToX64Binary}; DestDir: "{app}"; Flags: ignoreversion; DestName: "smimesign.exe"
+Source: {#PathToX64Helper}; DestDir: "{app}"; Flags: ignoreversion; DestName: "git-x509-cert.exe"
 
 [Registry]
 Root: HKLM; Subkey: "SYSTEM\CurrentControlSet\Control\Session Manager\Environment"; ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{app}"; Check: IsAdminLoggedOn and NeedsAddPath('{app}')
