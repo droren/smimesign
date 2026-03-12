@@ -1,307 +1,502 @@
-# smimesign (S/MIME Sign)
+# smimesign
 
-![PkgGoDev](https://pkg.go.dev/badge/github.com/droren/smimesign?utm_source=godoc)
+`smimesign` is an S/MIME / X.509 signing tool for Git commits and tags.
 
-This repository is a fork of [github/smimesign](https://github.com/github/smimesign)
-maintained at [droren/smimesign](https://github.com/droren/smimesign). It adds
-Linux support that is missing from the original project.
+This fork is maintained at `droren/smimesign` and adds Linux support beyond the
+original `github/smimesign` project, including PKCS#11 smart-card signing.
 
-Added simple update to code to cover : https://github.com/github/smimesign/pull/114 , i.e. build error on Windows for smime using go version > 1.17
+The current implementation supports:
 
-Smimesign is an S/MIME signing utility for macOS, Windows, and Linux that is compatible with Git. This allows developers to sign their Git commits and tags using X.509 certificates issued by public certificate authorities or their organization's internal certificate authority. Smimesign uses keys and certificates already stored in the _macOS Keychain_ or the _Windows Certificate Store_. If a certificate isn't found, or when running on Linux, a PKCS#12 file can be loaded via the `SMIMESIGN_P12` environment variable.
+- Windows certificate store signing
+- macOS keychain signing
+- Linux PKCS#12 signing
+- Linux PKCS#11 smart-card signing
+- Git X.509 signing with `gpg.format=x509`
+- extraction of embedded signing certificates from Git commits
 
-This project is pre-1.0, meaning that APIs and functionality may change without warning.
+## What To Use This For
 
-This package also contains reusable libraries in nested packages:
+Use `smimesign` when your organization issues X.509 certificates for user
+identity and you want Git commits and tags signed with those certificates
+instead of OpenPGP keys.
 
-- [`github.com/droren/smimesign/certstore`](./certstore)
-- [`github.com/droren/smimesign/fakeca`](./fakeca)
-- [`github.com/droren/smimesign/ietf-cms`](./ietf-cms)
+Typical setups:
 
-## Repository layout
+- Windows workstation with a user certificate in `CurrentUser\My`
+- Linux workstation with a YubiKey or CAC exposed through PKCS#11
+- Linux or macOS workstation using a PKCS#12 file
 
-The root directory contains the command line application. Important files and
-folders include:
+## Repository Layout
 
-- `main.go` – entry point and flag parsing for the CLI
-- `command_sign.go` / `command_verify.go` – signing and verification commands
-- `list_keys_command.go` – shows available certificates
-- `command_list_smartcard_keys.go` – shows available smartcard certificates
-- `certstore/` – cross‑platform access to the system certificate stores
-- `ietf-cms/` – implementation of the Cryptographic Message Syntax used for
-  signatures
-- `fakeca/` – helpers for generating test certificates
-- `windows-installer/` – resources for building the Windows installer
-
-## Contributing
-
-Different organizations do PKI differently and we weren't able to test everyone's setup. Contributions making this tool work better for your organization are welcome. See the [contributing docs](CONTRIBUTING.md) for more information on how to get involved.
-
-## Git Signing, GnuPG, PKI, and S/MIME
-
-Git allows developers to sign their work using GnuPG. This is a form of public key cryptography whereby the notion of trust is distributed. The party verifying a signature may directly know of the signer's identity and public key, or the signer's identity may be vouched for by a third party known to the verifier. Through layers of "vouching", a web-of-trust is established.
-
-Such a model is well suited to an unstructured environment. In hierarchical environments though, such as a corporation or other large organizations, a simpler approach is for digital identities to be issued and vouched for by a centralized authority. With this approach — known as Public Key Infrastructure, or PKI — an organization's certificate authority (CA) issues signed certificates that identify subjects such as people or computers. Embedded in these certificates is the identity's public key, allowing others who trust the CA to verify that identity's signatures.
-
-PKI is used in a variety of applications for encrypting or authenticating communications. Secure Mime (S/MIME) standardized a protocol for encrypting and signing emails using PKI. While protecting email was the original intent, S/MIME can protect any type of data, including Git commits and tags. Signing Git data with S/MIME provides the same protections as GnuPG while allowing for the more hierarchical trust model of PKI.
+- `main.go` and `command_*.go`: main CLI
+- `certstore/`: OS-specific certificate store access
+- `ietf-cms/`: CMS / PKCS#7 signing and verification
+- `cmd/git-x509-cert/`: helper for extracting and displaying commit signing certs
+- `Makefile`: build and test targets
 
 ## Installation
 
-### macOS
-
-You can install `smimesign` using [Homebrew](https://brew.sh/):
-
-```bash
-brew install smimesign
-```
-
-You can also download a prebuilt macOS binary [here](https://github.com/droren/smimesign/releases/latest). Put the binary on your `$PATH`, so Git will be able to find it.
-
 ### Windows
 
-You can install `smimesign` using [`scoop`](https://github.com/lukesampson/scoop):
+Build the binary:
 
-```batch
-scoop install smimesign
+```powershell
+git clone https://github.com/droren/smimesign.git
+cd smimesign
+go build -o smimesign.exe .
 ```
 
-You can download prebuilt Windows binaries [here](https://github.com/droren/smimesign/releases/latest). Put the appropriate binary on your `%PATH%`, so Git will be able to find it.
+Put `smimesign.exe` somewhere on `PATH`, for example:
+
+```powershell
+New-Item -ItemType Directory -Force $HOME\bin | Out-Null
+Copy-Item .\smimesign.exe $HOME\bin\smimesign.exe
+$env:Path = "$HOME\bin;$env:Path"
+```
+
+`smimesign` on Windows reads identities from the Windows certificate store.
+The normal expectation is that the signing certificate is present in the
+current user's personal store:
+
+- Store: `Current User`
+- Logical store: `Personal` / `My`
+
+To list what `smimesign` can currently use:
+
+```powershell
+smimesign.exe --list-keys
+```
+
+If multiple certificates match the same Git identity, the current
+implementation prefers the most signing-oriented certificate automatically. If
+ambiguity still remains, set a persistent certificate fingerprint with
+`SMIMESIGN_CERT_ID`.
+
+Example:
+
+```powershell
+$env:SMIMESIGN_CERT_ID = "0x0C900B6316B1708E09BF5F0695BA0CBC20DCE99F"
+```
+
+To persist it for future PowerShell sessions:
+
+```powershell
+setx SMIMESIGN_CERT_ID 0x0C900B6316B1708E09BF5F0695BA0CBC20DCE99F
+```
 
 ### Linux
 
-Linux builds are provided via the Go toolchain. Clone the repository and build the binary:
+Build the binary:
 
 ```bash
 git clone https://github.com/droren/smimesign.git
 cd smimesign
-go build
+go build -o smimesign .
 ```
 
-To run `smimesign` with a PKCS#12 file (software-based key), supply the file containing your certificate and private key. On macOS and Windows this is only required when the certificate isn't already in the system store:
+Put it on `PATH`:
+
+```bash
+install -m 0755 ./smimesign ~/.local/bin/smimesign
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Linux supports two primary identity sources.
+
+#### Linux With PKCS#12
 
 ```bash
 export SMIMESIGN_P12=/path/to/user.p12
-export SMIMESIGN_P12_PASSWORD=yourpassword
+export SMIMESIGN_P12_PASSWORD='your-password'
+smimesign --list-keys
+```
+
+#### Linux With PKCS#11 Smart Cards
+
+Set the PKCS#11 module path:
+
+```bash
+export SMIMESIGN_PKCS11_MODULE=/usr/lib64/pkcs11/opensc-pkcs11.so
+smimesign --list-smartcard-keys
+```
+
+If your token requires a PIN, you can either:
+
+- export `SMIMESIGN_PKCS11_PIN` for the current shell, or
+- use a wrapper script that prompts on `/dev/tty` and then execs `smimesign`
+
+Example wrapper:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ -z "${SMIMESIGN_PKCS11_PIN:-}" ]]; then
+  printf 'YubiKey PIN: ' > /dev/tty
+  IFS= read -r -s SMIMESIGN_PKCS11_PIN < /dev/tty
+  printf '\n' > /dev/tty
+  export SMIMESIGN_PKCS11_PIN
+fi
+exec /path/to/smimesign "$@"
+```
+
+When multiple certificates match the same identity, `smimesign` prefers a
+signing-capable certificate automatically. To pin one explicitly, set
+`SMIMESIGN_CERT_ID`:
+
+```bash
+export SMIMESIGN_CERT_ID=0x0C900B6316B1708E09BF5F0695BA0CBC20DCE99F
+```
+
+### macOS
+
+macOS uses the system keychain. Build and install like any other Go binary:
+
+```bash
+git clone https://github.com/droren/smimesign.git
+cd smimesign
+go build -o smimesign .
+```
+
+List available identities:
+
+```bash
 ./smimesign --list-keys
 ```
 
-To run `smimesign` with a smart card (hardware-based key) on Linux, you need a PKCS#11 driver for your smart card (e.g., OpenSC). Set the `SMIMESIGN_PKCS11_MODULE` environment variable to the path of the driver's `.so` file and `SMIMESIGN_PKCS11_PIN` to your smart card's PIN:
+## Configure Git To Use X.509 Signing By Default
 
-```bash
-export SMIMESIGN_PKCS11_MODULE=/usr/lib/x86_64-linux-gnu/opensc-pkcs11.so
-export SMIMESIGN_PKCS11_PIN=your_smartcard_pin
-./smimesign --list-smartcard-keys
-```
-**Note:** Replace `/usr/lib/x86_64-linux-gnu/opensc-pkcs11.so` with the actual path to your PKCS#11 module. You may need to install `opensc` or other smart card middleware for this to work.
+For Git 2.19 and newer, configure `smimesign` as the global X.509 signing
+program:
 
-If you do not want to keep the PIN in an environment variable, use a wrapper script that prompts on the terminal and then execs `smimesign` with `SMIMESIGN_PKCS11_PIN` exported for that invocation only. This is the most practical setup when Git invokes `smimesign` automatically for `git commit -S` and signed tags.
+### Windows
 
-
-### Building from source
-
-- Make sure you have the [Go compiler](https://golang.org/dl/) installed.
-- Make sure that you have a gcc compiler setup in your path to compile embedded c in go files. 
-- You'll probably want to put `$GOPATH/bin` on your `$PATH`.
-- Run `go get github.com/droren/smimesign`
-
-### Cross-compiling
-
-Go uses `GOOS=darwin` for macOS (not `macos`).
-
-Linux builds are pure-Go, so you can cross-compile from any host with:
-
-```bash
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o build/linux/amd64/smimesign .
-GOOS=linux GOARCH=386  CGO_ENABLED=0 go build -o build/linux/386/smimesign .
+```powershell
+git config --global gpg.x509.program smimesign.exe
+git config --global gpg.format x509
+git config --global commit.gpgsign true
+git config --global tag.gpgSign true
+git config --global log.showSignature true
+git config --global user.name "Dennis Hjort"
+git config --global user.email dennis.hjort@saabgroup.com
+git config --global user.signingkey dennis.hjort@saabgroup.com
 ```
 
-Windows and macOS builds use cgo for the native certificate store, so
-cross-compiling requires a suitable C toolchain and SDK on your host
-(e.g., MinGW for Windows, and an Apple SDK or osxcross for macOS).
+### Linux and macOS
 
 ```bash
-GOOS=windows GOARCH=amd64 CGO_ENABLED=1 go build -o build/windows/amd64/smimesign.exe .
-GOOS=windows GOARCH=386  CGO_ENABLED=1 go build -o build/windows/386/smimesign.exe .
-
-GOOS=darwin GOARCH=amd64 CGO_ENABLED=1 go build -o build/darwin/amd64/smimesign .
-GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 go build -o build/darwin/arm64/smimesign .
+git config --global gpg.x509.program smimesign
+git config --global gpg.format x509
+git config --global commit.gpgsign true
+git config --global tag.gpgSign true
+git config --global log.showSignature true
+git config --global user.name "Dennis Hjort"
+git config --global user.email dennis.hjort@saabgroup.com
+git config --global user.signingkey dennis.hjort@saabgroup.com
 ```
 
-Alternatively, use the Makefile targets:
+After configuration, validate with:
+
+```bash
+git commit -S -m "x509 signing test"
+git log --show-signature -1
+```
+
+## Choosing The Right Signing Certificate
+
+When more than one certificate matches the same Git user identity, the current
+implementation does this:
+
+1. If `SMIMESIGN_CERT_ID` is set, that fingerprint wins.
+2. Otherwise, `smimesign` prefers the most signing-oriented certificate.
+3. If the choice is still ambiguous, signing fails with guidance to set
+   `SMIMESIGN_CERT_ID`.
+
+In practice, this means a certificate with `KU=contentCommitment` is preferred
+over a client-authentication certificate with `EKU=clientAuth`.
+
+Recommended practice:
+
+- set `user.signingkey` to the Git email address present in the certificate
+- set `SMIMESIGN_CERT_ID` if your environment has multiple matching certs
+
+## Common Commands
+
+List identities from the OS store or PKCS#12:
+
+```bash
+smimesign --list-keys
+```
+
+List smart-card identities on Linux:
+
+```bash
+smimesign --list-smartcard-keys
+```
+
+Create and verify a detached signature:
+
+```bash
+smimesign --sign -u user@example.com -b file.txt > file.txt.sig
+smimesign --verify file.txt.sig file.txt
+```
+
+Extract certificates from an existing CMS signature:
+
+```bash
+smimesign --dump-certs file.txt.sig > certs.pem
+```
+
+## Validating The Certificate Used For A Git Commit
+
+There are two supported ways to inspect the signing certificate embedded in a
+Git commit.
+
+### Option 1: Use The Cross-Platform Helper Tool
+
+Build it once:
+
+```bash
+make build-tools
+```
+
+This creates `build/tools/git-x509-cert`.
+
+Show the signer certificate from `HEAD` in human-readable form:
+
+```bash
+build/tools/git-x509-cert
+```
+
+Show a specific commit:
+
+```bash
+build/tools/git-x509-cert 6f274166f5db657127bfd29a07a49e46db03500d
+```
+
+Show all embedded certificates:
+
+```bash
+build/tools/git-x509-cert --all HEAD
+```
+
+Export the signer certificate as PEM:
+
+```bash
+build/tools/git-x509-cert --pem HEAD > signer.pem
+```
+
+The helper uses:
+
+- `certutil -dump` on Windows
+- `openssl x509 -text -noout` on Linux
+- `openssl x509 -text -noout` on macOS
+
+If those tools are unavailable, it falls back to a built-in certificate summary
+plus PEM output.
+
+This helper extracts and displays the certificate embedded in the commit
+signature. It does not by itself establish that the commit is trusted. Pair it
+with `git log --show-signature` or `git verify-commit` when you need both
+certificate inspection and signature verification.
+
+### Option 2: Extract PEM And Inspect It Yourself
+
+Export the signing certificate from a commit:
+
+```bash
+build/tools/git-x509-cert --pem <commit-sha> > signer.pem
+```
+
+View it on Linux or macOS:
+
+```bash
+openssl x509 -in signer.pem -text -noout
+```
+
+View it on Windows:
+
+```powershell
+certutil -dump .\signer.pem
+```
+
+You can also inspect the commit signature at a higher level with:
+
+```bash
+git log --show-signature -1 <commit-sha>
+```
+
+## Trust Warnings
+
+If the cryptographic signature is valid but the issuing CA is not trusted on
+the local machine, `smimesign --verify` reports:
+
+- a good signature
+- a trust warning
+- exit status `0`
+
+This is intentional. It distinguishes:
+
+- "the signature bytes are valid"
+- "this workstation trusts the issuing CA"
+
+### Install Your CA To Resolve Unknown Authority Warnings
+
+#### Windows
+
+Import the issuing CA into the appropriate Windows trust store, typically
+`Trusted Root Certification Authorities` or `Intermediate Certification
+Authorities` depending on what you are installing.
+
+Example:
+
+```powershell
+certutil -addstore Root company-root-ca.cer
+certutil -addstore CA company-issuing-ca.cer
+```
+
+#### Linux
+
+RHEL / Fedora / CentOS:
+
+```bash
+sudo cp company-ca.pem /etc/pki/ca-trust/source/anchors/
+sudo update-ca-trust
+```
+
+Debian / Ubuntu:
+
+```bash
+sudo cp company-ca.pem /usr/local/share/ca-certificates/company-ca.crt
+sudo update-ca-certificates
+```
+
+#### macOS
+
+```bash
+sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain company-root-ca.cer
+```
+
+After trust is installed, rerun:
+
+```bash
+git log --show-signature -1
+```
+
+## Troubleshooting
+
+### Windows: "multiple identities match"
+
+Current behavior:
+
+- `smimesign` tries to prefer the most signing-oriented certificate
+- if still ambiguous, it tells you to set `SMIMESIGN_CERT_ID`
+
+Recommended fix:
+
+```powershell
+smimesign.exe --list-keys
+$env:SMIMESIGN_CERT_ID = "0xYOUR_FINGERPRINT"
+git commit -S -m "retry"
+```
+
+### Windows: Git cannot find `smimesign.exe`
+
+Check:
+
+```powershell
+Get-Command smimesign.exe
+git config --global --get gpg.x509.program
+```
+
+### Linux: No smart-card identities found
+
+Check the PKCS#11 module and token visibility:
+
+```bash
+pkcs11-tool --module "$SMIMESIGN_PKCS11_MODULE" -L
+smimesign --list-smartcard-keys
+```
+
+If the token is visible with `pkcs11-tool` but not in `smimesign`, verify the
+module path and any PKCS#11 forwarding environment required by your setup.
+
+### Linux: PIN entry problems
+
+If Git signs non-interactively, use a wrapper script that prompts on `/dev/tty`
+and exports `SMIMESIGN_PKCS11_PIN` only for that process.
+
+### Verify shows "certificate signed by unknown authority"
+
+The signature is valid, but your system does not trust the issuing CA yet.
+Install the relevant CA certificate into the system trust store and rerun the
+verification command.
+
+### Git commit succeeds but `git log --show-signature` still looks wrong
+
+Check:
+
+```bash
+git config --global --get gpg.format
+git config --global --get gpg.x509.program
+git config --global --get log.showSignature
+```
+
+Expected:
+
+- `gpg.format = x509`
+- `gpg.x509.program = smimesign` or `smimesign.exe`
+- `log.showSignature = true`
+
+## Building
+
+Build the main binary:
+
+```bash
+go build .
+```
+
+Build platform targets:
 
 ```bash
 make build-linux
 make build-windows
 make build-darwin
+make build-tools
 make build-all
 ```
 
-### Running tests
-
-You can run tests via Makefile targets or the Go toolchain directly.
-
-- Minimal subset (safe in sandboxes):
-
-  ```bash
-  make test-min
-  ```
-
-- Full test suite:
-
-  ```bash
-  make test-all
-  ```
-
-Notes:
-- On macOS or constrained environments, set Go's fallback trust roots to avoid accessing the system trust store:
-
-  ```bash
-  export GODEBUG=x509usefallbackroots=1
-  ```
-
-- The `certstore` tests interact with the macOS Keychain and Windows Certificate Store and may require running locally without sandboxing.
-- When running tests that require signing with a PKCS#12 file, ensure these variables point to valid values:
-
-  ```bash
-  export SMIMESIGN_P12=/path/to/user.p12
-  export SMIMESIGN_P12_PASSWORD=yourpassword
-  ```
-
-### Creating test X.509 certificates
-
-You can create a PKCS#12 file for testing with OpenSSL:
+`make build-windows` and `make build-darwin` require cgo cross-toolchains.
+The Makefile now checks explicitly for those tools and fails early with a clear
+message. Override the compiler commands if your environment uses different
+tool names:
 
 ```bash
-openssl genrsa -out test.key 2048
-openssl req -new -x509 -key test.key -out test.crt -subj "/CN=testuser"
-openssl pkcs12 -export -inkey test.key -in test.crt -out test.p12 -passout pass:testpassword
+make build-windows WINDOWS_CC_AMD64=x86_64-w64-mingw32-gcc WINDOWS_CC_386=i686-w64-mingw32-gcc
+make build-darwin DARWIN_CC_AMD64=o64-clang DARWIN_CC_ARM64=oa64-clang
 ```
 
-Use `test.p12` with `SMIMESIGN_P12` and `testpassword` with `SMIMESIGN_P12_PASSWORD`.
+## Tests
 
-## Configuring Git
-
-Git needs to be told to sign commits and tags using smimesign instead of GnuPG. This can be configured on a global or per-repository level. The Git configuration directives for changing signing tools was changed in version 2.19.
-
-### Git versions 2.19 and newer
-
-**Configure Git to use smimesign for a single repository:**
+Run the minimal safe subset:
 
 ```bash
-$ cd /path/to/my/repository
-$ git config --local gpg.x509.program smimesign
-$ git config --local gpg.format x509
+make test-min
 ```
 
-**Configure Git to use smimesign for all repositories:**
+Run the full suite:
 
 ```bash
-$ git config --global gpg.x509.program smimesign
-$ git config --global gpg.format x509
-$ git config --global commit.gpgsign true
-$ git config --global tag.gpgSign true
-$ git config --global log.showSignature true
+make test-all
 ```
 
-### Git versions 2.18 and older
-
-**Configure Git to use smimesign for a single repository:**
+On macOS or other constrained environments, you may want:
 
 ```bash
-$ cd /path/to/my/repository
-$ git config --local gpg.program smimesign
+export GODEBUG=x509usefallbackroots=1
 ```
 
-**Configure Git to use smimesign for all repositories:**
+## Contributing
 
-```bash
-$ git config --global gpg.program smimesign
-```
-
-## Configuring smimesign
-
-No configuration is needed to use smimesign. However, you must already have a certificate and private key in order to make signatures. Furthermore, to sign Git commits or tags, it is best to have a certificate that includes your Git email address.
-
-**Find your Git email address:**
-
-```bash
-$ git config --get user.email
-```
-
-**List available signing identities**
-
-```bash
-$ smimesign --list-keys
-```
-
-If multiple certificates match the same email or user ID, select the desired
-certificate by ID (fingerprint). You can pass the full fingerprint or a unique
-suffix, but if the suffix is ambiguous you must provide a longer ID.
-
-```bash
-$ smimesign --sign -u user@example.com --cert-id 0x0123456789abcdef
-```
-
-You can also set a default certificate ID for the current environment:
-
-```bash
-$ export SMIMESIGN_CERT_ID=0x0123456789abcdef
-```
-
-## Usage
-
-The `smimesign` command has three primary modes:
-
-- `--sign`     – create a signature for a file
-- `--verify`   – verify a signature
-- `--dump-certs` – extract embedded X.509 certificates from a signature (PEM)
-- `--list-keys` – list available certificates (from PKCS#12 files)
-- `--list-smartcard-keys` – list available certificates from smart cards (PKCS#11)
-
-Selection options:
-- `--cert-id` – disambiguate when multiple certificates match `--local-user`
-- `SMIMESIGN_CERT_ID` – environment fallback when `--cert-id` is not set
-
-Example of creating a detached signature and verifying it:
-
-```bash
-$ smimesign --sign -u user@example.com -b file.txt > file.txt.sig
-$ smimesign --verify file.txt.sig file.txt
-```
-
-If the signature is cryptographically valid but the issuing CA is not trusted locally, `smimesign --verify` reports a good signature together with a trust warning and exits successfully. This distinguishes "the signature is valid" from "the certificate chain is trusted on this machine".
-
-To resolve an unknown-authority warning, install the issuing CA certificate into the host trust store:
-
-```bash
-# RHEL / Fedora / CentOS
-sudo cp company-ca.pem /etc/pki/ca-trust/source/anchors/
-sudo update-ca-trust
-
-# Debian / Ubuntu
-sudo cp company-ca.pem /usr/local/share/ca-certificates/company-ca.crt
-sudo update-ca-certificates
-```
-
-After installing the CA, rerun `smimesign --verify` or `git log --show-signature`.
-
-Extract certificates embedded in a signature (outputs PEM to stdout):
-
-```bash
-$ smimesign --dump-certs file.txt.sig > certs.pem
-$ openssl x509 -in certs.pem -noout -text
-```
-
-## Smart cards (PIV/CAC/Yubikey)
-
-Many large organizations and government agencies distribute certificates and keys to end users via smart cards. These cards allow applications on the user's computer to use private keys for signing or encryption without giving them the ability to export those keys. The native certificate stores on both Windows and macOS can talk to smart cards, though special drivers or middleware may be required.
-
-If you can find your certificate in the Keychain Access app on macOS or in the Certificate Manager (`certmgr`) on Windows, it will probably work with smimesign. If you can't find it, you may need to install some drivers or middlware.
-
-### Yubikey
-
-Many Yubikey models support the PIV smart card interface. To get your operating system to discover certificates and keys on your Yubikey, you may have to install the [OpenSC middleware](https://github.com/OpenSC/OpenSC/releases/latest). On macOS avoid installing OpenSC using homebrew, as it [omits an important component](https://discourse.brew.sh/t/opensc-formula-is-missing-the-opensc-tokend-component/1683/2). Instead use the installer provided by OpenSC or use the homebrew-cask formula.
-
-Additionally, to manage the manage certificates and keys on the Yubikey on macOS, you'll need the [Yubikey PIV Manager](https://www.yubico.com/support/knowledge-base/categories/articles/smart-card-tools/) (GUI) or the [Yubikey PIV Tool](https://www.yubico.com/support/knowledge-base/categories/articles/smart-card-tools/) (command line).
-
-![Yubikey PIV Keychain in macOS Keychain Access app](https://user-images.githubusercontent.com/248078/45328493-13705300-b511-11e8-97f4-1a04cf35cc6c.png)
+PKI environments vary widely. Contributions that improve compatibility with
+enterprise Windows, Linux PKCS#11, smart cards, and certificate-chain handling
+are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).

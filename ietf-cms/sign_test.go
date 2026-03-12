@@ -103,6 +103,31 @@ func TestSignDetached(t *testing.T) {
 	}
 }
 
+func TestGetSignerCertificates(t *testing.T) {
+	data := []byte("hello, world!")
+
+	ci, err := SignDetached(data, leaf.Chain(), leaf.PrivateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sd, err := ParseSignedData(ci)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	signers, err := sd.GetSignerCertificates()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(signers) != 1 {
+		t.Fatalf("expected 1 signer certificate, found %d", len(signers))
+	}
+	if !signers[0].Equal(leaf.Certificate) {
+		t.Fatal("expected signer certificate to match the leaf certificate")
+	}
+}
+
 func TestSignDetachedWithOpenSSL(t *testing.T) {
 	// Do not require this test to pass if openssl is not in the path
 	opensslPath, err := exec.LookPath("openssl")
