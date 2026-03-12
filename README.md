@@ -176,9 +176,9 @@ git config --global gpg.format x509
 git config --global commit.gpgsign true
 git config --global tag.gpgSign true
 git config --global log.showSignature true
-git config --global user.name "Dennis Hjort"
-git config --global user.email dennis.hjort@saabgroup.com
-git config --global user.signingkey dennis.hjort@saabgroup.com
+git config --global user.name "Alex Example"
+git config --global user.email alex.example@example.invalid
+git config --global user.signingkey alex.example@example.invalid
 ```
 
 ### Linux and macOS
@@ -189,9 +189,9 @@ git config --global gpg.format x509
 git config --global commit.gpgsign true
 git config --global tag.gpgSign true
 git config --global log.showSignature true
-git config --global user.name "Dennis Hjort"
-git config --global user.email dennis.hjort@saabgroup.com
-git config --global user.signingkey dennis.hjort@saabgroup.com
+git config --global user.name "Alex Example"
+git config --global user.email alex.example@example.invalid
+git config --global user.signingkey alex.example@example.invalid
 ```
 
 After configuration, validate with:
@@ -471,7 +471,7 @@ message. Override the compiler commands if your environment uses different
 tool names:
 
 ```bash
-make build-windows WINDOWS_CC_AMD64=x86_64-w64-mingw32-gcc WINDOWS_CC_386=i686-w64-mingw32-gcc
+make build-windows WINDOWS_CC_AMD64=x86_64-w64-mingw32-gcc
 make build-darwin DARWIN_CC_AMD64=o64-clang DARWIN_CC_ARM64=oa64-clang
 ```
 
