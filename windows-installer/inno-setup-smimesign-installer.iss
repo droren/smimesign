@@ -13,6 +13,16 @@
   #pragma error PathToX64Binary + " does not exist, please build it first."
 #endif
 
+#define PathToX86Helper "../build/386/git-x509-cert.exe"
+#ifnexist PathToX86Helper
+  #pragma error PathToX86Helper + " does not exist, please build it first."
+#endif
+
+#define PathToX64Helper "../build/amd64/git-x509-cert.exe"
+#ifnexist PathToX64Helper
+  #pragma error PathToX64Helper + " does not exist, please build it first."
+#endif
+
 #define MyAppPublisher "GitHub, Inc."
 #define MyAppURL "https://github.com/droren/smimesign"
 #define MyAppFilePrefix "smimesign-windows"
@@ -49,6 +59,8 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Files]
 Source: {#PathToX86Binary}; DestDir: "{app}"; Flags: ignoreversion; DestName: "smimesign.exe"; Check: not Is64BitInstallMode
 Source: {#PathToX64Binary}; DestDir: "{app}"; Flags: ignoreversion; DestName: "smimesign.exe"; Check: Is64BitInstallMode
+Source: {#PathToX86Helper}; DestDir: "{app}"; Flags: ignoreversion; DestName: "git-x509-cert.exe"; Check: not Is64BitInstallMode
+Source: {#PathToX64Helper}; DestDir: "{app}"; Flags: ignoreversion; DestName: "git-x509-cert.exe"; Check: Is64BitInstallMode
 
 [Registry]
 Root: HKLM; Subkey: "SYSTEM\CurrentControlSet\Control\Session Manager\Environment"; ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{app}"; Check: IsAdminLoggedOn and NeedsAddPath('{app}')
