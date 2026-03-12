@@ -31,7 +31,14 @@ const (
 	contentTypeTSQuery = "application/timestamp-query"
 	contentTypeTSReply = "application/timestamp-reply"
 	nonceBytes         = 16
+	maxTSResponseBytes = 10 << 20
 )
+
+func init() {
+	DefaultHTTPClient = &http.Client{
+		Timeout: 30 * time.Second,
+	}
+}
 
 // GenerateNonce generates a new nonce for this TSR.
 func GenerateNonce() *big.Int {
@@ -98,13 +105,25 @@ func (req Request) Do(url string) (Response, error) {
 	if err != nil {
 		return nilResp, err
 	}
+	defer httpResp.Body.Close()
 	if ct := httpResp.Header.Get("Content-Type"); ct != contentTypeTSReply {
 		return nilResp, fmt.Errorf("Bad content-type: %s", ct)
 	}
+	if httpResp.ContentLength > maxTSResponseBytes {
+		return nilResp, fmt.Errorf("timestamp response too large: %d bytes", httpResp.ContentLength)
+	}
 
-	buf := bytes.NewBuffer(make([]byte, 0, httpResp.ContentLength))
-	if _, err = io.Copy(buf, httpResp.Body); err != nil {
+	capHint := httpResp.ContentLength
+	if capHint < 0 || capHint > maxTSResponseBytes {
+		capHint = 0
+	}
+
+	buf := bytes.NewBuffer(make([]byte, 0, capHint))
+	if _, err = io.Copy(buf, io.LimitReader(httpResp.Body, maxTSResponseBytes+1)); err != nil {
 		return nilResp, err
+	}
+	if int64(buf.Len()) > maxTSResponseBytes {
+		return nilResp, fmt.Errorf("timestamp response exceeded limit of %d bytes", maxTSResponseBytes)
 	}
 
 	return ParseResponse(buf.Bytes())
