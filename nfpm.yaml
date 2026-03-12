@@ -13,4 +13,6 @@ license: MIT
 contents:
   - src: ./build/linux/smimesign
     dst: /usr/bin/smimesign
+  - src: ./build/linux/git-x509-cert
+    dst: /usr/bin/git-x509-cert
     type: file
