@@ -32,12 +32,16 @@ jobs:
         run: |
           go build -o build/macos/smimesign -ldflags "-X main.versionString=${{ env.GIT_VERSION }}" .
           go build -o build/macos/git-x509-cert ./cmd/git-x509-cert
+          mkdir -p build/macos/package/docs build/macos/package/examples
+          build/macos/smimesign -h > build/macos/package/docs/smimesign-help.txt
+          build/macos/git-x509-cert -h > build/macos/package/docs/git-x509-cert-help.txt
+          cp README.md LICENSE.md build/macos/package/docs/
+          cp examples/smimesign-pkcs11-wrapper.sh build/macos/package/examples/
       - name: Tar the macOS binary
         run: |
-          mkdir -p build/macos/package
           cp build/macos/smimesign build/macos/package/smimesign
           cp build/macos/git-x509-cert build/macos/package/git-x509-cert
-          cd build/macos && tar -czvf smimesign-macos-${{ env.GIT_VERSION }}.tgz -C package smimesign git-x509-cert
+          cd build/macos && tar -czvf smimesign-macos-${{ env.GIT_VERSION }}.tgz -C package .
       - name: Upload macOS files to the release
         uses: softprops/action-gh-release@v2
         with:
@@ -83,9 +87,17 @@ jobs:
         run: |
           go build -o build/linux/smimesign-${{ matrix.arch }} -ldflags "-X main.versionString=${{ env.GIT_VERSION }}" .
           GOOS=linux GOARCH=${{ matrix.arch }} CGO_ENABLED=0 go build -o build/linux/git-x509-cert-${{ matrix.arch }} ./cmd/git-x509-cert
+          mkdir -p build/linux/package-${{ matrix.arch }}/docs build/linux/package-${{ matrix.arch }}/examples
+          build/linux/smimesign-${{ matrix.arch }} -h > build/linux/package-${{ matrix.arch }}/docs/smimesign-help.txt
+          build/linux/git-x509-cert-${{ matrix.arch }} -h > build/linux/package-${{ matrix.arch }}/docs/git-x509-cert-help.txt
+          cp README.md LICENSE.md build/linux/package-${{ matrix.arch }}/docs/
+          cp examples/smimesign-pkcs11-wrapper.sh build/linux/package-${{ matrix.arch }}/examples/
           if [ "${{ matrix.arch }}" = "amd64" ]; then
             cp build/linux/smimesign-${{ matrix.arch }} build/linux/smimesign
             cp build/linux/git-x509-cert-${{ matrix.arch }} build/linux/git-x509-cert
+            mkdir -p build/linux/docs
+            cp build/linux/package-${{ matrix.arch }}/docs/smimesign-help.txt build/linux/docs/smimesign-help.txt
+            cp build/linux/package-${{ matrix.arch }}/docs/git-x509-cert-help.txt build/linux/docs/git-x509-cert-help.txt
           fi
       - name: Install nfpm
         run: |
@@ -97,10 +109,9 @@ jobs:
           VERSION=${{ env.BARE_GIT_VERSION }} nfpm package -p rpm --target build/linux/smimesign-${{ env.BARE_GIT_VERSION }}-1.x86_64.rpm
       - name: Tar the Linux binary
         run: |
-          mkdir -p build/linux/package-${{ matrix.arch }}
           cp build/linux/smimesign-${{ matrix.arch }} build/linux/package-${{ matrix.arch }}/smimesign
           cp build/linux/git-x509-cert-${{ matrix.arch }} build/linux/package-${{ matrix.arch }}/git-x509-cert
-          cd build/linux && tar -czvf smimesign-linux-${{ matrix.arch }}-${{ env.GIT_VERSION }}.tgz -C package-${{ matrix.arch }} smimesign git-x509-cert
+          cd build/linux && tar -czvf smimesign-linux-${{ matrix.arch }}-${{ env.GIT_VERSION }}.tgz -C package-${{ matrix.arch }} .
       - name: Upload Linux files to the release
         uses: softprops/action-gh-release@v2
         with:
@@ -144,6 +155,13 @@ jobs:
         run: |
           GOOS=windows GOARCH=amd64 go build -o build/amd64/smimesign.exe -ldflags "-X main.versionString=${{ env.GIT_VERSION }}" .
           GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o build/amd64/git-x509-cert.exe ./cmd/git-x509-cert
+      - name: Build offline documentation
+        shell: bash
+        run: |
+          mkdir -p build/amd64/docs
+          ./build/amd64/smimesign.exe -h > build/amd64/docs/smimesign-help.txt
+          ./build/amd64/git-x509-cert.exe -h > build/amd64/docs/git-x509-cert-help.txt
+          cp README.md LICENSE.md build/amd64/docs/
       - name: Sign binaries
         if: ${{ env.PFX_PASSWORD != '' }}
         run: |
@@ -166,9 +184,10 @@ jobs:
       - name: Create zip archives for release upload
         shell: bash
         run: |
-          mkdir -p build/amd64/package
+          mkdir -p build/amd64/package/docs
           cp build/amd64/smimesign.exe build/amd64/package/smimesign.exe
           cp build/amd64/git-x509-cert.exe build/amd64/package/git-x509-cert.exe
+          cp build/amd64/docs/* build/amd64/package/docs/
           powershell -Command "Compress-Archive -Path build/amd64/package/* -DestinationPath build/amd64/smimesign-windows-amd64-${{ env.GIT_VERSION }}.zip"
       - name: Upload Windows files to the release
         uses: softprops/action-gh-release@v2

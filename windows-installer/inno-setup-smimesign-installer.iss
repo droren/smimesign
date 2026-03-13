@@ -13,6 +13,26 @@
   #pragma error PathToX64Helper + " does not exist, please build it first."
 #endif
 
+#define PathToReadme "../README.md"
+#ifnexist PathToReadme
+  #pragma error PathToReadme + " does not exist."
+#endif
+
+#define PathToLicense "../LICENSE.md"
+#ifnexist PathToLicense
+  #pragma error PathToLicense + " does not exist."
+#endif
+
+#define PathToSmimesignHelp "../build/amd64/docs/smimesign-help.txt"
+#ifnexist PathToSmimesignHelp
+  #pragma error PathToSmimesignHelp + " does not exist, please build docs first."
+#endif
+
+#define PathToGitX509CertHelp "../build/amd64/docs/git-x509-cert-help.txt"
+#ifnexist PathToGitX509CertHelp
+  #pragma error PathToGitX509CertHelp + " does not exist, please build docs first."
+#endif
+
 #define MyAppPublisher "GitHub, Inc."
 #define MyAppURL "https://github.com/droren/smimesign"
 #define MyAppFilePrefix "smimesign-windows"
@@ -49,6 +69,10 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Files]
 Source: {#PathToX64Binary}; DestDir: "{app}"; Flags: ignoreversion; DestName: "smimesign.exe"
 Source: {#PathToX64Helper}; DestDir: "{app}"; Flags: ignoreversion; DestName: "git-x509-cert.exe"
+Source: {#PathToReadme}; DestDir: "{app}\docs"; Flags: ignoreversion; DestName: "README.md"
+Source: {#PathToLicense}; DestDir: "{app}\docs"; Flags: ignoreversion; DestName: "LICENSE.md"
+Source: {#PathToSmimesignHelp}; DestDir: "{app}\docs"; Flags: ignoreversion; DestName: "smimesign-help.txt"
+Source: {#PathToGitX509CertHelp}; DestDir: "{app}\docs"; Flags: ignoreversion; DestName: "git-x509-cert-help.txt"
 
 [Registry]
 Root: HKLM; Subkey: "SYSTEM\CurrentControlSet\Control\Session Manager\Environment"; ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{app}"; Check: IsAdminLoggedOn and NeedsAddPath('{app}')

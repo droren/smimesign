@@ -16,3 +16,18 @@ contents:
   - src: ./build/linux/git-x509-cert
     dst: /usr/bin/git-x509-cert
     type: file
+  - src: ./README.md
+    dst: /usr/share/doc/smimesign/README.md
+    type: file
+  - src: ./LICENSE.md
+    dst: /usr/share/doc/smimesign/LICENSE.md
+    type: file
+  - src: ./build/linux/docs/smimesign-help.txt
+    dst: /usr/share/doc/smimesign/smimesign-help.txt
+    type: file
+  - src: ./build/linux/docs/git-x509-cert-help.txt
+    dst: /usr/share/doc/smimesign/git-x509-cert-help.txt
+    type: file
+  - src: ./examples/smimesign-pkcs11-wrapper.sh
+    dst: /usr/share/doc/smimesign/examples/smimesign-pkcs11-wrapper.sh
+    type: file

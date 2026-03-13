@@ -54,6 +54,13 @@ Copy-Item .\smimesign.exe $HOME\bin\smimesign.exe
 $env:Path = "$HOME\bin;$env:Path"
 ```
 
+The Windows installer also ships offline documentation in the installed
+`docs\` directory, including:
+
+- `README.md`
+- `smimesign-help.txt`
+- `git-x509-cert-help.txt`
+
 `smimesign` on Windows reads identities from the Windows certificate store.
 The normal expectation is that the signing certificate is present in the
 current user's personal store:
@@ -101,6 +108,10 @@ install -m 0755 ./smimesign ~/.local/bin/smimesign
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
+Linux packages should also install offline documentation under
+`/usr/share/doc/smimesign/`, including the README, CLI help text, and the
+PKCS#11 wrapper example.
+
 Linux supports two primary identity sources.
 
 #### Linux With PKCS#12
@@ -124,8 +135,12 @@ If your token requires a PIN, you can either:
 
 - export `SMIMESIGN_PKCS11_PIN` for the current shell, or
 - use a wrapper script that prompts on `/dev/tty` and then execs `smimesign`
+- expect some tokens to require the PIN even for `--list-smartcard-keys`
 
-Example wrapper:
+An example wrapper is provided in
+[`examples/smimesign-pkcs11-wrapper.sh`](examples/smimesign-pkcs11-wrapper.sh).
+
+Minimal wrapper:
 
 ```bash
 #!/usr/bin/env bash
@@ -145,6 +160,53 @@ signing-capable certificate automatically. To pin one explicitly, set
 
 ```bash
 export SMIMESIGN_CERT_ID=0x0C900B6316B1708E09BF5F0695BA0CBC20DCE99F
+```
+
+#### Linux With Forwarded PKCS#11 Access
+
+Some environments do not expose the smart card directly inside the shell or
+container where Git is running. In that case, `smimesign` itself still works
+fine, but it needs help from a wrapper that provides:
+
+- the forwarded PKCS#11 module path
+- any forwarding environment such as `P11_KIT_SERVER_ADDRESS`
+- the certificate fingerprint to prefer for signing
+- a `/dev/tty` PIN prompt when Git invokes signing non-interactively
+
+Typical setup:
+
+```bash
+export P11_KIT_SERVER_ADDRESS=unix:path=/run/user/1000/p11-kit/pkcs11
+export REMOTE_PKCS11_MODULE=/usr/lib64/pkcs11/p11-kit-client.so
+pkcs11-tool --module "$REMOTE_PKCS11_MODULE" -L
+```
+
+If that shows the token, install the wrapper and point Git to it:
+
+```bash
+install -m 0755 examples/smimesign-pkcs11-wrapper.sh ~/.local/bin/smimesign
+install -m 0755 ./smimesign ~/.local/bin/smimesign-real
+git config --global gpg.x509.program "$HOME/.local/bin/smimesign"
+git config --global gpg.format x509
+git config --global commit.gpgsign true
+git config --global tag.gpgSign true
+git config --global log.showSignature true
+```
+
+Then customize the wrapper defaults:
+
+- set `REAL_SMIMESIGN` to the real binary path if different
+- set `PKCS11_MODULE_DEFAULT` or `REMOTE_PKCS11_MODULE`
+- set `CERT_ID_DEFAULT` or `SMIMESIGN_CERT_ID` to the signing certificate
+
+Validation flow:
+
+```bash
+smimesign --list-smartcard-keys
+printf "forwarded pkcs11 test\n" > payload.txt
+smimesign --sign -u alex.example@example.invalid -b payload.txt > payload.sig
+smimesign --verify payload.sig payload.txt
+git commit -S -m "x509 signing test"
 ```
 
 ### macOS
@@ -184,7 +246,7 @@ git config --global user.signingkey alex.example@example.invalid
 ### Linux and macOS
 
 ```bash
-git config --global gpg.x509.program smimesign
+git config --global gpg.x509.program /absolute/path/to/smimesign
 git config --global gpg.format x509
 git config --global commit.gpgsign true
 git config --global tag.gpgSign true
@@ -444,8 +506,12 @@ git config --global --get log.showSignature
 Expected:
 
 - `gpg.format = x509`
-- `gpg.x509.program = smimesign` or `smimesign.exe`
+- `gpg.x509.program = /absolute/path/to/smimesign` or `smimesign.exe`
 - `log.showSignature = true`
+
+If you depend on a wrapper for PKCS#11 forwarding or PIN prompting, use the
+absolute wrapper path rather than a bare command name. That avoids accidental
+fallback to a different `smimesign` binary found earlier on `PATH`.
 
 ## Building
 
