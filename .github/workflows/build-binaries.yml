@@ -33,8 +33,8 @@ jobs:
           go build -o build/macos/smimesign -ldflags "-X main.versionString=${{ env.GIT_VERSION }}" .
           go build -o build/macos/git-x509-cert ./cmd/git-x509-cert
           mkdir -p build/macos/package/docs build/macos/package/examples
-          build/macos/smimesign -h > build/macos/package/docs/smimesign-help.txt
-          build/macos/git-x509-cert -h > build/macos/package/docs/git-x509-cert-help.txt
+          build/macos/smimesign -h > build/macos/package/docs/smimesign-help.txt 2>&1
+          build/macos/git-x509-cert -h > build/macos/package/docs/git-x509-cert-help.txt 2>&1
           cp README.md LICENSE.md build/macos/package/docs/
           cp examples/smimesign-pkcs11-wrapper.sh build/macos/package/examples/
       - name: Tar the macOS binary
@@ -88,8 +88,8 @@ jobs:
           go build -o build/linux/smimesign-${{ matrix.arch }} -ldflags "-X main.versionString=${{ env.GIT_VERSION }}" .
           GOOS=linux GOARCH=${{ matrix.arch }} CGO_ENABLED=0 go build -o build/linux/git-x509-cert-${{ matrix.arch }} ./cmd/git-x509-cert
           mkdir -p build/linux/package-${{ matrix.arch }}/docs build/linux/package-${{ matrix.arch }}/examples
-          build/linux/smimesign-${{ matrix.arch }} -h > build/linux/package-${{ matrix.arch }}/docs/smimesign-help.txt
-          build/linux/git-x509-cert-${{ matrix.arch }} -h > build/linux/package-${{ matrix.arch }}/docs/git-x509-cert-help.txt
+          build/linux/smimesign-${{ matrix.arch }} -h > build/linux/package-${{ matrix.arch }}/docs/smimesign-help.txt 2>&1
+          build/linux/git-x509-cert-${{ matrix.arch }} -h > build/linux/package-${{ matrix.arch }}/docs/git-x509-cert-help.txt 2>&1
           cp README.md LICENSE.md build/linux/package-${{ matrix.arch }}/docs/
           cp examples/smimesign-pkcs11-wrapper.sh build/linux/package-${{ matrix.arch }}/examples/
           if [ "${{ matrix.arch }}" = "amd64" ]; then
@@ -159,8 +159,8 @@ jobs:
         shell: bash
         run: |
           mkdir -p build/amd64/docs
-          ./build/amd64/smimesign.exe -h > build/amd64/docs/smimesign-help.txt
-          ./build/amd64/git-x509-cert.exe -h > build/amd64/docs/git-x509-cert-help.txt
+          ./build/amd64/smimesign.exe -h > build/amd64/docs/smimesign-help.txt 2>&1
+          ./build/amd64/git-x509-cert.exe -h > build/amd64/docs/git-x509-cert-help.txt 2>&1
           cp README.md LICENSE.md build/amd64/docs/
       - name: Sign binaries
         if: ${{ env.PFX_PASSWORD != '' }}
