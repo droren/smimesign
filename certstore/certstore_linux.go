@@ -34,7 +34,7 @@ func openStore() (Store, error) {
 
 	if path := os.Getenv("SMIMESIGN_P12"); path != "" {
 		password := os.Getenv("SMIMESIGN_P12_PASSWORD")
-		data, err := os.ReadFile(path)
+		data, err := os.ReadFile(path) // #nosec G304,G703 -- path is intentionally user-configurable via SMIMESIGN_P12.
 		if err != nil {
 			return nil, fmt.Errorf("failed to read PKCS#12 file %q: %w", path, err)
 		}
@@ -161,17 +161,45 @@ func parsePKCS12(data []byte, password string) (interface{}, *x509.Certificate, 
 		return key, cert, certs, nil
 	}
 
-	passin := fmt.Sprintf("pass:%s", password)
-	cmd := exec.Command("openssl", "pkcs12", "-nodes", "-passin", passin)
-	cmd.Stdin = bytes.NewReader(data)
-	out, err := cmd.Output()
+	passwordReader, passwordWriter, err := os.Pipe()
 	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to create password pipe for PKCS#12 parsing: %w", err)
+	}
+	defer passwordReader.Close()
+
+	cmd := exec.Command("openssl", "pkcs12", "-nodes", "-passin", "fd:3")
+	cmd.Stdin = bytes.NewReader(data)
+	cmd.ExtraFiles = []*os.File{passwordReader}
+
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = new(bytes.Buffer)
+
+	if err := cmd.Start(); err != nil {
+		_ = passwordWriter.Close()
+		return nil, nil, nil, fmt.Errorf("failed to start openssl command for PKCS#12 parsing: %w", err)
+	}
+
+	if _, err := io.WriteString(passwordWriter, password+"\n"); err != nil {
+		_ = passwordWriter.Close()
+		_ = cmd.Wait()
+		return nil, nil, nil, fmt.Errorf("failed to provide password to openssl command for PKCS#12 parsing: %w", err)
+	}
+	if err := passwordWriter.Close(); err != nil {
+		_ = cmd.Wait()
+		return nil, nil, nil, fmt.Errorf("failed to close password pipe for PKCS#12 parsing: %w", err)
+	}
+
+	if err := cmd.Wait(); err != nil {
+		if stderr, ok := cmd.Stderr.(*bytes.Buffer); ok && stderr.Len() > 0 {
+			return nil, nil, nil, fmt.Errorf("failed to execute openssl command for PKCS#12 parsing: %v: %s", err, stderr.String())
+		}
 		return nil, nil, nil, fmt.Errorf("failed to execute openssl command for PKCS#12 parsing: %w", err)
 	}
 
 	var (
 		block *pem.Block
-		rest  = out
+		rest  = out.Bytes()
 		key   interface{}
 		certs []*x509.Certificate
 	)

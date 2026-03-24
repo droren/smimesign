@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/certifi/gocertifi"
 	cms "github.com/github/smimesign/ietf-cms"
@@ -59,7 +60,8 @@ func verifyAttached() error {
 	}
 
 	// Verify signature
-	chains, err := sd.Verify(verifyOpts())
+	opts, revocationMode := verifyOpts()
+	chains, err := sd.Verify(opts)
 	if err != nil {
 		if trustErr, ok := err.(x509.UnknownAuthorityError); ok {
 			return verifyAttachedWithUntrustedCert(sd, trustErr)
@@ -71,6 +73,11 @@ func verifyAttached() error {
 		}
 
 		return errors.Wrap(err, "failed to verify signature")
+	}
+
+	if err := verifyRevocation(chains, revocationMode); err != nil {
+		emitBadSig(chains)
+		return errors.Wrap(err, "failed revocation check")
 	}
 
 	return reportSuccessfulVerification(chains)
@@ -123,7 +130,8 @@ func verifyDetached() error {
 		return errors.Wrap(err, "failed to read message file")
 	}
 
-	chains, err := sd.VerifyDetached(buf.Bytes(), verifyOpts())
+	opts, revocationMode := verifyOpts()
+	chains, err := sd.VerifyDetached(buf.Bytes(), opts)
 	if err != nil {
 		if trustErr, ok := err.(x509.UnknownAuthorityError); ok {
 			return verifyDetachedWithUntrustedCert(sd, buf.Bytes(), trustErr)
@@ -137,10 +145,15 @@ func verifyDetached() error {
 		return errors.Wrap(err, "failed to verify signature")
 	}
 
+	if err := verifyRevocation(chains, revocationMode); err != nil {
+		emitBadSig(chains)
+		return errors.Wrap(err, "failed revocation check")
+	}
+
 	return reportSuccessfulVerification(chains)
 }
 
-func verifyOpts() x509.VerifyOptions {
+func verifyOpts() (x509.VerifyOptions, string) {
 	roots, err := x509.SystemCertPool()
 	if err != nil {
 		// SystemCertPool isn't implemented for Windows. fall back to mozilla trust
@@ -152,16 +165,34 @@ func verifyOpts() x509.VerifyOptions {
 		}
 	}
 
-	for _, ident := range idents {
-		if cert, err := ident.Certificate(); err == nil {
-			roots.AddCert(cert)
+	if *trustLocalCerts || envBool("SMIMESIGN_TRUST_LOCAL_CERTS") {
+		for _, ident := range idents {
+			if cert, err := ident.Certificate(); err == nil {
+				roots.AddCert(cert)
+			}
 		}
+	}
+
+	keyUsages := []x509.ExtKeyUsage{
+		x509.ExtKeyUsageEmailProtection,
+		x509.ExtKeyUsageCodeSigning,
+	}
+	if *allowAnyEKUFlag || envBool("SMIMESIGN_ALLOW_ANY_EKU") {
+		keyUsages = []x509.ExtKeyUsage{x509.ExtKeyUsageAny}
+	}
+
+	revocationMode := strings.TrimSpace(*revocationOpt)
+	if envMode := strings.TrimSpace(os.Getenv("SMIMESIGN_REVOCATION_CHECK")); envMode != "" {
+		revocationMode = envMode
+	}
+	if revocationMode != "ocsp" {
+		revocationMode = "none"
 	}
 
 	return x509.VerifyOptions{
 		Roots:     roots,
-		KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageAny},
-	}
+		KeyUsages: keyUsages,
+	}, revocationMode
 }
 
 func reportSuccessfulVerification(chains [][][]*x509.Certificate) error {

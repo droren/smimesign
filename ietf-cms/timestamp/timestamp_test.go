@@ -73,6 +73,47 @@ func TestRequestDo(t *testing.T) {
 	}
 }
 
+func TestRequestDoRejectsNonHTTPSByDefault(t *testing.T) {
+	DefaultHTTPClient = testHTTPClient{}
+	lastRequest = nil
+
+	req := Request{Version: 1}
+	var err error
+	req.CertReq = true
+	req.Nonce = GenerateNonce()
+	if req.MessageImprint, err = NewMessageImprint(crypto.SHA256, bytes.NewReader([]byte("hello"))); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := req.Do("http://example.com"); err == nil || !strings.Contains(err.Error(), "must use HTTPS") {
+		t.Fatalf("expected HTTPS validation error, got %v", err)
+	}
+	if lastRequest != nil {
+		t.Fatal("expected no outbound request when TSA URL scheme is rejected")
+	}
+}
+
+func TestRequestDoAllowsHTTPWhenExplicitlyEnabled(t *testing.T) {
+	DefaultHTTPClient = testHTTPClient{}
+	lastRequest = nil
+	t.Setenv("SMIMESIGN_ALLOW_HTTP_TSA", "1")
+
+	req := Request{Version: 1}
+	var err error
+	req.CertReq = true
+	req.Nonce = GenerateNonce()
+	if req.MessageImprint, err = NewMessageImprint(crypto.SHA256, bytes.NewReader([]byte("hello"))); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := req.Do("http://example.com"); err != errFakeClient {
+		t.Fatalf("expected errFakeClient after allowing HTTP TSA, got %v", err)
+	}
+	if lastRequest == nil {
+		t.Fatal("expected outbound request after allowing HTTP TSA")
+	}
+}
+
 func TestRequestMatches(t *testing.T) {
 	var err error
 

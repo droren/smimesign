@@ -2,7 +2,8 @@ package main
 
 import (
 	"bytes"
-	"crypto/sha1" // #nosec G505 -- required for X.509 SHA1 fingerprints.
+	"crypto/sha1" // #nosec G505 -- retained for legacy fingerprint compatibility.
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/hex"
@@ -40,21 +41,45 @@ func certHasFingerprint(cert *x509.Certificate, fpr []byte) bool {
 		return false
 	}
 
-	return bytes.HasSuffix(certFingerprint(cert), fpr)
+	sha256Fpr := certFingerprint(cert)
+	sha1Fpr := certLegacyFingerprint(cert)
+
+	switch len(fpr) {
+	case len(sha256Fpr):
+		return bytes.Equal(sha256Fpr, fpr)
+	case len(sha1Fpr):
+		return bytes.Equal(sha1Fpr, fpr)
+	}
+
+	if len(fpr) < 8 {
+		return false
+	}
+
+	return bytes.HasSuffix(sha256Fpr, fpr) || bytes.HasSuffix(sha1Fpr, fpr)
 }
 
-// certHexFingerprint calculated the hex SHA1 fingerprint of a certificate.
+// certHexFingerprint calculates the default hex SHA256 fingerprint of a certificate.
 func certHexFingerprint(cert *x509.Certificate) string {
 	return hex.EncodeToString(certFingerprint(cert))
 }
 
-// certFingerprint calculated the SHA1 fingerprint of a certificate.
+// certFingerprint calculates the default SHA256 fingerprint of a certificate.
 func certFingerprint(cert *x509.Certificate) []byte {
 	if len(cert.Raw) == 0 {
 		return nil
 	}
 
-	fpr := sha1.Sum(cert.Raw) // #nosec G401 -- SHA1 is used for legacy cert fingerprints.
+	fpr := sha256.Sum256(cert.Raw)
+	return fpr[:]
+}
+
+// certLegacyFingerprint calculates the legacy SHA1 fingerprint of a certificate.
+func certLegacyFingerprint(cert *x509.Certificate) []byte {
+	if len(cert.Raw) == 0 {
+		return nil
+	}
+
+	fpr := sha1.Sum(cert.Raw) // #nosec G401 -- SHA1 is retained for legacy fingerprint matching.
 	return fpr[:]
 }
 

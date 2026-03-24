@@ -12,7 +12,7 @@ func importPKCS12FromEnv(importFn func([]byte, string) error) error {
 		return nil
 	}
 	password := os.Getenv("SMIMESIGN_P12_PASSWORD")
-	data, err := os.ReadFile(path) // #nosec G304 -- path is intentionally user-configurable.
+	data, err := os.ReadFile(path) // #nosec G304,G703 -- path is intentionally user-configurable.
 	if err != nil {
 		return err
 	}

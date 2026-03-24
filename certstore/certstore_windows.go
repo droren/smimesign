@@ -543,7 +543,7 @@ func (wpk *winPrivateKey) Delete() error {
 	} else if wpk.capiProv != 0 {
 		// Delete CryptoAPI key
 		var (
-			param unsafe.Pointer
+			param []byte
 			err   error
 
 			containerName C.LPCTSTR
@@ -554,19 +554,19 @@ func (wpk *winPrivateKey) Delete() error {
 		if param, err = wpk.getProviderParam(C.PP_CONTAINER); err != nil {
 			return fmt.Errorf("failed to get container name for CryptoAPI key deletion: %w", err)
 		} else {
-			containerName = C.LPCTSTR(param)
+			containerName = C.LPCTSTR(unsafe.Pointer(&param[0]))
 		}
 
 		if param, err = wpk.getProviderParam(C.PP_NAME); err != nil {
 			return fmt.Errorf("failed to get provider name for CryptoAPI key deletion: %w", err)
 		} else {
-			providerName = C.LPCTSTR(param)
+			providerName = C.LPCTSTR(unsafe.Pointer(&param[0]))
 		}
 
 		if param, err = wpk.getProviderParam(C.PP_PROVTYPE); err != nil {
 			return fmt.Errorf("failed to get provider type for CryptoAPI key deletion: %w", err)
 		} else {
-			providerType = (*C.DWORD)(param)
+			providerType = (*C.DWORD)(unsafe.Pointer(&param[0]))
 		}
 
 		// use CRYPT_SILENT too?
@@ -582,7 +582,7 @@ func (wpk *winPrivateKey) Delete() error {
 }
 
 // getProviderParam gets a parameter about a provider.
-func (wpk *winPrivateKey) getProviderParam(param C.DWORD) (unsafe.Pointer, error) {
+func (wpk *winPrivateKey) getProviderParam(param C.DWORD) ([]byte, error) {
 	var dataLen C.DWORD
 	if ok := C.CryptGetProvParam(wpk.capiProv, param, nil, &dataLen, 0); ok == winFalse {
 		return nil, lastError("failed to get provider parameter size")
@@ -594,8 +594,7 @@ func (wpk *winPrivateKey) getProviderParam(param C.DWORD) (unsafe.Pointer, error
 		return nil, lastError("failed to get provider parameter")
 	}
 
-	// TODO leaking memory here
-	return C.CBytes(data), nil
+	return data[:dataLen], nil
 }
 
 // Close closes this winPrivateKey.

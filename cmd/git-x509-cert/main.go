@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/pem"
@@ -93,7 +92,7 @@ func run() error {
 }
 
 func gitOutput(args ...string) ([]byte, error) {
-	cmd := exec.Command("git", args...)
+	cmd := exec.Command("git", args...) // #nosec G204 -- arguments are passed directly without shell interpolation.
 	cmd.Stderr = os.Stderr
 	out, err := cmd.Output()
 	if err != nil {
@@ -180,9 +179,9 @@ func platformCertificateDump(cert *x509.Certificate) (string, error) {
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "windows":
-		cmd = exec.Command("certutil", "-dump", tmpName)
+		cmd = exec.Command("certutil", "-dump", tmpName) // #nosec G204 -- static command with a temp file path.
 	default:
-		cmd = exec.Command("openssl", "x509", "-in", tmpName, "-text", "-noout")
+		cmd = exec.Command("openssl", "x509", "-in", tmpName, "-text", "-noout") // #nosec G204 -- static command with a temp file path.
 	}
 	cmd.Env = os.Environ()
 
@@ -216,7 +215,6 @@ func fallbackCertificateDump(cert *x509.Certificate) string {
 		}
 		fmt.Fprintf(&buf, "URIs: %s\n", strings.Join(uris, ", "))
 	}
-	fmt.Fprintf(&buf, "SHA1 Fingerprint: %X\n", sha1.Sum(cert.Raw))
 	fmt.Fprintf(&buf, "SHA256 Fingerprint: %X\n", sha256.Sum256(cert.Raw))
 	buf.WriteString("\nPEM:\n")
 	_ = pem.Encode(&buf, &pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw})
