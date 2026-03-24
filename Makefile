@@ -1,4 +1,4 @@
-.PHONY := help test-min test-all audit audit-tools build-linux build-windows build-darwin build-tools build-all
+.PHONY := help clean test-min test-all audit audit-tools build-linux build-windows build-darwin build-tools build-all
 
 # Default minimal test packages that run safely in sandboxes
 PKG_MIN := ./fakeca ./ietf-cms/timestamp
@@ -23,6 +23,7 @@ endef
 
 help:
 	@echo "Targets:"
+	@echo "  clean     - Remove generated build artifacts"
 	@echo "  test-min  - Run a minimal, sandbox-safe subset of tests"
 	@echo "  test-all  - Run all tests (may require macOS keychain access)"
 	@echo "  audit     - Run security-focused checks (go test, go vet, govulncheck, gosec)"
@@ -33,6 +34,15 @@ help:
 	@echo "  GODEBUG   - Defaults to 'x509usefallbackroots=1' to avoid system truststore access issues"
 	@echo "  WINDOWS_CC_AMD64 / WINDOWS_CC_386 - Windows cgo cross-compilers"
 	@echo "  DARWIN_CC_AMD64 / DARWIN_CC_ARM64 - macOS cgo cross-compilers"
+
+clean:
+	rm -rf $(BUILD_DIR)/audit
+	rm -rf $(BUILD_DIR)/tools
+	rm -rf $(BUILD_DIR)/linux/amd64
+	rm -rf $(BUILD_DIR)/linux/386
+	rm -rf $(BUILD_DIR)/windows
+	rm -rf $(BUILD_DIR)/darwin
+	rm -rf $(BUILD_DIR)/amd64
 
 test-min:
 	@echo "[test-min] Running: $(PKG_MIN)"
