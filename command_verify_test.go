@@ -2,6 +2,9 @@ package main
 
 import (
 	"crypto/x509"
+	"errors"
+	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/github/smimesign/certstore"
@@ -66,5 +69,63 @@ func TestVerifyOptsCanEnableOCSPRevocation(t *testing.T) {
 	_, mode := verifyOpts()
 	if mode != "ocsp" {
 		t.Fatalf("expected ocsp revocation mode, got %q", mode)
+	}
+}
+
+func TestVerifyOptsCanEnableSoftOCSPRevocation(t *testing.T) {
+	defer testSetup(t, "--verify")()
+
+	t.Setenv("SMIMESIGN_REVOCATION_CHECK", "ocsp-soft")
+	_, mode := verifyOpts()
+	if mode != "ocsp-soft" {
+		t.Fatalf("expected ocsp-soft revocation mode, got %q", mode)
+	}
+}
+
+type failingRevocationHTTPClient struct{}
+
+func (failingRevocationHTTPClient) Do(*http.Request) (*http.Response, error) {
+	return nil, errors.New("ocsp fetch failed")
+}
+
+func TestHandleUntrustedButValidSignatureEnforcesOCSP(t *testing.T) {
+	defer testSetup(t, "--verify")()
+
+	prevClient := revocationHTTPClient
+	revocationHTTPClient = failingRevocationHTTPClient{}
+	defer func() { revocationHTTPClient = prevClient }()
+
+	root := fakeca.New(fakeca.IsCA)
+	leaf := root.Issue(fakeca.OCSPServer("https://ocsp.example.invalid"))
+	chains := [][][]*x509.Certificate{{{leaf.Certificate, root.Certificate}}}
+	trustErr := x509.UnknownAuthorityError{Cert: leaf.Certificate}
+
+	err := handleUntrustedButValidSignature(chains, trustErr, "ocsp")
+	if err == nil {
+		t.Fatal("expected revocation error for unknown-authority signature when ocsp is enabled")
+	}
+	if !strings.Contains(err.Error(), "failed revocation check") {
+		t.Fatalf("expected revocation failure, got %v", err)
+	}
+}
+
+func TestHandleUntrustedButValidSignatureWarnsOnSoftOCSP(t *testing.T) {
+	defer testSetup(t, "--verify")()
+
+	prevClient := revocationHTTPClient
+	revocationHTTPClient = failingRevocationHTTPClient{}
+	defer func() { revocationHTTPClient = prevClient }()
+
+	root := fakeca.New(fakeca.IsCA)
+	leaf := root.Issue(fakeca.OCSPServer("https://ocsp.example.invalid"))
+	chains := [][][]*x509.Certificate{{{leaf.Certificate, root.Certificate}}}
+	trustErr := x509.UnknownAuthorityError{Cert: leaf.Certificate}
+
+	err := handleUntrustedButValidSignature(chains, trustErr, "ocsp-soft")
+	if err != nil {
+		t.Fatalf("expected soft OCSP mode to warn but succeed, got %v", err)
+	}
+	if !strings.Contains(stderrBuf.String(), "Verification succeeded because revocation mode is set to warn") {
+		t.Fatalf("expected soft OCSP warning, got %q", stderrBuf.String())
 	}
 }

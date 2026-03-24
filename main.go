@@ -42,7 +42,7 @@ var (
 	includeCertsOpt = getopt.IntLong("include-certs", 0, -2, "-3 is the same as -2, but ommits issuer when cert has Authority Information Access extension. -2 includes all certs except root. -1 includes all certs. 0 includes no certs. 1 includes leaf cert. >1 includes n from the leaf. Default -2.", "n")
 	allowAnyEKUFlag = getopt.BoolLong("allow-any-eku", 0, "accept any extended key usage during verification")
 	trustLocalCerts = getopt.BoolLong("trust-local-certs", 0, "treat local identities as trust anchors during verification")
-	revocationOpt   = getopt.EnumLong("revocation-check", 0, []string{"none", "ocsp"}, "none", "perform revocation checking during verification", "{none|ocsp}")
+	revocationOpt   = getopt.EnumLong("revocation-check", 0, []string{"none", "ocsp", "ocsp-soft"}, "none", "perform revocation checking during verification", "{none|ocsp|ocsp-soft}")
 
 	// Remaining arguments
 	fileArgs []string

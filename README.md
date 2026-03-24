@@ -290,6 +290,21 @@ During verification, the defaults are intentionally stricter:
   `SMIMESIGN_ALLOW_ANY_EKU=1`
 - revocation checking can be enabled with `--revocation-check=ocsp` or
   `SMIMESIGN_REVOCATION_CHECK=ocsp`
+- if you want revocation problems to be warnings rather than hard failures,
+  use `--revocation-check=ocsp-soft` or
+  `SMIMESIGN_REVOCATION_CHECK=ocsp-soft`
+
+For Git history inspection, `ocsp-soft` is often the better operational
+default. In many organizations, certificates are revoked when an employee
+leaves the company. That revocation is still useful information, but it should
+not make existing repository history unreadable or unusable. Otherwise, an
+ordinary shared repository would eventually become impossible to verify without
+rewriting history or splitting the project into new repositories every time a
+developer leaves. In that model:
+
+- the signature still proves who signed the commit at the time
+- revocation becomes an important warning about current trust state
+- historical code remains accessible and reviewable
 
 Recommended practice:
 
@@ -520,7 +535,15 @@ verification command.
 If you enable `--revocation-check=ocsp`, `smimesign` requires the signing
 certificate to expose a reachable OCSP responder and to return a `good`
 status. In restricted or air-gapped environments, leave revocation checking at
-`none`.
+`none`, or use `ocsp-soft` if you want revocation failures to be surfaced as
+warnings without making `git log --show-signature` fail.
+
+This distinction matters for long-lived repositories. A revoked certificate may
+mean "do not trust this identity for new signing activity" without meaning
+"historical commits signed by this person must disappear from normal use." For
+that reason, `ocsp-soft` is the recommended mode for many repository browsing
+and review workflows, while strict `ocsp` remains available for fail-closed
+policies.
 
 ### Timestamping over HTTP is rejected
 

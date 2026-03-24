@@ -14,10 +14,14 @@ import (
 
 const maxOCSPResponseBytes = 1 << 20
 
-var revocationHTTPClient = &http.Client{Timeout: 15 * time.Second}
+type ocspHTTPClient interface {
+	Do(*http.Request) (*http.Response, error)
+}
+
+var revocationHTTPClient ocspHTTPClient = &http.Client{Timeout: 15 * time.Second}
 
 func verifyRevocation(chains [][][]*x509.Certificate, mode string) error {
-	if mode != "ocsp" {
+	if mode != "ocsp" && mode != "ocsp-soft" {
 		return nil
 	}
 

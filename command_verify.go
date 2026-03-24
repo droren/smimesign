@@ -64,7 +64,7 @@ func verifyAttached() error {
 	chains, err := sd.Verify(opts)
 	if err != nil {
 		if trustErr, ok := err.(x509.UnknownAuthorityError); ok {
-			return verifyAttachedWithUntrustedCert(sd, trustErr)
+			return verifyAttachedWithUntrustedCert(sd, trustErr, revocationMode)
 		}
 		if len(chains) > 0 {
 			emitBadSig(chains)
@@ -76,6 +76,9 @@ func verifyAttached() error {
 	}
 
 	if err := verifyRevocation(chains, revocationMode); err != nil {
+		if isSoftRevocationMode(revocationMode) {
+			return reportTrustedButRevocationWarning(chains, err)
+		}
 		emitBadSig(chains)
 		return errors.Wrap(err, "failed revocation check")
 	}
@@ -134,7 +137,7 @@ func verifyDetached() error {
 	chains, err := sd.VerifyDetached(buf.Bytes(), opts)
 	if err != nil {
 		if trustErr, ok := err.(x509.UnknownAuthorityError); ok {
-			return verifyDetachedWithUntrustedCert(sd, buf.Bytes(), trustErr)
+			return verifyDetachedWithUntrustedCert(sd, buf.Bytes(), trustErr, revocationMode)
 		}
 		if len(chains) > 0 {
 			emitBadSig(chains)
@@ -146,6 +149,9 @@ func verifyDetached() error {
 	}
 
 	if err := verifyRevocation(chains, revocationMode); err != nil {
+		if isSoftRevocationMode(revocationMode) {
+			return reportTrustedButRevocationWarning(chains, err)
+		}
 		emitBadSig(chains)
 		return errors.Wrap(err, "failed revocation check")
 	}
@@ -185,7 +191,9 @@ func verifyOpts() (x509.VerifyOptions, string) {
 	if envMode := strings.TrimSpace(os.Getenv("SMIMESIGN_REVOCATION_CHECK")); envMode != "" {
 		revocationMode = envMode
 	}
-	if revocationMode != "ocsp" {
+	switch revocationMode {
+	case "ocsp", "ocsp-soft":
+	default:
 		revocationMode = "none"
 	}
 
@@ -207,22 +215,38 @@ func reportSuccessfulVerification(chains [][][]*x509.Certificate) error {
 	return nil
 }
 
-func verifyAttachedWithUntrustedCert(sd *cms.SignedData, trustErr x509.UnknownAuthorityError) error {
+func verifyAttachedWithUntrustedCert(sd *cms.SignedData, trustErr x509.UnknownAuthorityError, revocationMode string) error {
 	chains, err := sd.VerifySignatureOnly()
 	if err != nil {
 		sErrSig.emit()
 		return errors.Wrap(trustErr, "failed to verify signature")
 	}
-	return reportUntrustedButValidSignature(chains, trustErr)
+	return handleUntrustedButValidSignature(chains, trustErr, revocationMode)
 }
 
-func verifyDetachedWithUntrustedCert(sd *cms.SignedData, message []byte, trustErr x509.UnknownAuthorityError) error {
+func verifyDetachedWithUntrustedCert(sd *cms.SignedData, message []byte, trustErr x509.UnknownAuthorityError, revocationMode string) error {
 	chains, err := sd.VerifyDetachedSignatureOnly(message)
 	if err != nil {
 		sErrSig.emit()
 		return errors.Wrap(trustErr, "failed to verify signature")
 	}
+	return handleUntrustedButValidSignature(chains, trustErr, revocationMode)
+}
+
+func handleUntrustedButValidSignature(chains [][][]*x509.Certificate, trustErr x509.UnknownAuthorityError, revocationMode string) error {
+	if err := verifyRevocation(chains, revocationMode); err != nil {
+		if isSoftRevocationMode(revocationMode) {
+			return reportUntrustedButValidSignatureWithRevocationWarning(chains, trustErr, err)
+		}
+		emitBadSig(chains)
+		return errors.Wrap(err, "failed revocation check")
+	}
+
 	return reportUntrustedButValidSignature(chains, trustErr)
+}
+
+func isSoftRevocationMode(mode string) bool {
+	return mode == "ocsp-soft"
 }
 
 func reportUntrustedButValidSignature(chains [][][]*x509.Certificate, trustErr x509.UnknownAuthorityError) error {
@@ -239,5 +263,28 @@ func reportUntrustedButValidSignature(chains [][][]*x509.Certificate, trustErr x
 	fmt.Fprintf(stderr, "smimesign: On RHEL/Fedora/CentOS, copy the CA PEM to /etc/pki/ca-trust/source/anchors/ and run update-ca-trust.\n")
 	fmt.Fprintf(stderr, "smimesign: On Debian/Ubuntu, copy the CA PEM to /usr/local/share/ca-certificates/ and run update-ca-certificates.\n")
 	fmt.Fprintf(stderr, "smimesign: Then rerun verification.\n")
+	return nil
+}
+
+func reportTrustedButRevocationWarning(chains [][][]*x509.Certificate, revocationErr error) error {
+	cert := chains[0][0][0]
+	fpr := certHexFingerprint(cert)
+	subj := cert.Subject.String()
+
+	fmt.Fprintf(stderr, "smimesign: Signature made using certificate ID 0x%s\n", fpr)
+	emitGoodSig(chains)
+	fmt.Fprintf(stderr, "smimesign: Good signature from \"%s\"\n", subj)
+	emitTrustUndefined("revocation-check-failed")
+	fmt.Fprintf(stderr, "smimesign: WARNING: certificate chain is trusted, but revocation checking failed: %v\n", revocationErr)
+	fmt.Fprintf(stderr, "smimesign: Verification succeeded because revocation mode is set to warn. Use --revocation-check=ocsp to fail closed.\n")
+	return nil
+}
+
+func reportUntrustedButValidSignatureWithRevocationWarning(chains [][][]*x509.Certificate, trustErr x509.UnknownAuthorityError, revocationErr error) error {
+	if err := reportUntrustedButValidSignature(chains, trustErr); err != nil {
+		return err
+	}
+	fmt.Fprintf(stderr, "smimesign: WARNING: revocation checking failed: %v\n", revocationErr)
+	fmt.Fprintf(stderr, "smimesign: Verification succeeded because revocation mode is set to warn. Use --revocation-check=ocsp to fail closed.\n")
 	return nil
 }
