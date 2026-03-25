@@ -285,9 +285,12 @@ During verification, the defaults are intentionally stricter:
 
 - local signing identities are not treated as trust roots unless explicitly
   enabled with `--trust-local-certs` or `SMIMESIGN_TRUST_LOCAL_CERTS=1`
-- certificate EKUs are restricted to `emailProtection` and `codeSigning`
-  unless explicitly relaxed with `--allow-any-eku` or
-  `SMIMESIGN_ALLOW_ANY_EKU=1`
+- certificate usage is checked against a signing-oriented policy:
+  `emailProtection`, `codeSigning`, Microsoft commercial code signing, and
+  Microsoft document signing are accepted; plain client-auth certificates are
+  not
+- if your environment needs broader compatibility than that policy, relax it
+  with `--allow-any-eku` or `SMIMESIGN_ALLOW_ANY_EKU=1`
 - revocation checking can be enabled with `--revocation-check=ocsp` or
   `SMIMESIGN_REVOCATION_CHECK=ocsp`
 - if you want revocation problems to be warnings rather than hard failures,

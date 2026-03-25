@@ -83,6 +83,11 @@ func verifyAttached() error {
 		return errors.Wrap(err, "failed revocation check")
 	}
 
+	if err := verifySignerUsagePolicy(chains); err != nil {
+		emitBadSig(chains)
+		return errors.Wrap(err, "failed to verify signature")
+	}
+
 	return reportSuccessfulVerification(chains)
 }
 
@@ -156,6 +161,11 @@ func verifyDetached() error {
 		return errors.Wrap(err, "failed revocation check")
 	}
 
+	if err := verifySignerUsagePolicy(chains); err != nil {
+		emitBadSig(chains)
+		return errors.Wrap(err, "failed to verify signature")
+	}
+
 	return reportSuccessfulVerification(chains)
 }
 
@@ -179,14 +189,6 @@ func verifyOpts() (x509.VerifyOptions, string) {
 		}
 	}
 
-	keyUsages := []x509.ExtKeyUsage{
-		x509.ExtKeyUsageEmailProtection,
-		x509.ExtKeyUsageCodeSigning,
-	}
-	if *allowAnyEKUFlag || envBool("SMIMESIGN_ALLOW_ANY_EKU") {
-		keyUsages = []x509.ExtKeyUsage{x509.ExtKeyUsageAny}
-	}
-
 	revocationMode := strings.TrimSpace(*revocationOpt)
 	if envMode := strings.TrimSpace(os.Getenv("SMIMESIGN_REVOCATION_CHECK")); envMode != "" {
 		revocationMode = envMode
@@ -199,7 +201,7 @@ func verifyOpts() (x509.VerifyOptions, string) {
 
 	return x509.VerifyOptions{
 		Roots:     roots,
-		KeyUsages: keyUsages,
+		KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageAny},
 	}, revocationMode
 }
 
@@ -234,6 +236,11 @@ func verifyDetachedWithUntrustedCert(sd *cms.SignedData, message []byte, trustEr
 }
 
 func handleUntrustedButValidSignature(chains [][][]*x509.Certificate, trustErr x509.UnknownAuthorityError, revocationMode string) error {
+	if err := verifySignerUsagePolicy(chains); err != nil {
+		emitBadSig(chains)
+		return errors.Wrap(err, "failed to verify signature")
+	}
+
 	if err := verifyRevocation(chains, revocationMode); err != nil {
 		if isSoftRevocationMode(revocationMode) {
 			return reportUntrustedButValidSignatureWithRevocationWarning(chains, trustErr, err)
@@ -247,6 +254,24 @@ func handleUntrustedButValidSignature(chains [][][]*x509.Certificate, trustErr x
 
 func isSoftRevocationMode(mode string) bool {
 	return mode == "ocsp-soft"
+}
+
+func verifySignerUsagePolicy(chains [][][]*x509.Certificate) error {
+	if *allowAnyEKUFlag || envBool("SMIMESIGN_ALLOW_ANY_EKU") {
+		return nil
+	}
+
+	for _, signerChains := range chains {
+		if len(signerChains) == 0 || len(signerChains[0]) == 0 {
+			continue
+		}
+		cert := signerChains[0][0]
+		if !certAllowedForCommitSigning(cert) {
+			return fmt.Errorf("certificate specifies an incompatible key usage")
+		}
+	}
+
+	return nil
 }
 
 func reportUntrustedButValidSignature(chains [][][]*x509.Certificate, trustErr x509.UnknownAuthorityError) error {

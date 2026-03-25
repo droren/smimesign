@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/x509"
+	"encoding/asn1"
 	"errors"
 	"net/http"
 	"strings"
@@ -44,11 +45,24 @@ func TestVerifyOptsRestrictsKeyUsageByDefault(t *testing.T) {
 	defer testSetup(t, "--verify")()
 
 	opts, _ := verifyOpts()
-	if len(opts.KeyUsages) != 2 {
-		t.Fatalf("expected two default verification EKUs, got %v", opts.KeyUsages)
+	if len(opts.KeyUsages) != 1 || opts.KeyUsages[0] != x509.ExtKeyUsageAny {
+		t.Fatalf("expected chain verification to use ExtKeyUsageAny and enforce signer policy separately, got %v", opts.KeyUsages)
 	}
-	if opts.KeyUsages[0] != x509.ExtKeyUsageEmailProtection || opts.KeyUsages[1] != x509.ExtKeyUsageCodeSigning {
-		t.Fatalf("unexpected default verification EKUs: %v", opts.KeyUsages)
+}
+
+func TestCertAllowedForCommitSigningAcceptsDocumentSigningOID(t *testing.T) {
+	cert := fakeca.New().Certificate
+	cert.UnknownExtKeyUsage = []asn1.ObjectIdentifier{oidMSDocumentSigning}
+	if !certAllowedForCommitSigning(cert) {
+		t.Fatal("expected Microsoft document-signing OID to be accepted for commit signing")
+	}
+}
+
+func TestCertAllowedForCommitSigningRejectsClientAuthOnly(t *testing.T) {
+	cert := fakeca.New().Certificate
+	cert.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}
+	if certAllowedForCommitSigning(cert) {
+		t.Fatal("expected client-auth-only certificate to be rejected for commit signing")
 	}
 }
 

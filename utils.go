@@ -99,8 +99,9 @@ func normalizeEmail(email string) string {
 }
 
 var (
-	oidEmailAddress = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 1}
-	oidCommonName   = asn1.ObjectIdentifier{2, 5, 4, 3}
+	oidEmailAddress      = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 1}
+	oidCommonName        = asn1.ObjectIdentifier{2, 5, 4, 3}
+	oidMSDocumentSigning = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 311, 10, 3, 12}
 )
 
 // certHasEmail checks if a certificate contains the given email address in its
@@ -136,4 +137,29 @@ func certEmails(cert *x509.Certificate) []string {
 	}
 
 	return emails
+}
+
+func certAllowedForCommitSigning(cert *x509.Certificate) bool {
+	if cert == nil {
+		return false
+	}
+
+	if len(cert.ExtKeyUsage) == 0 && len(cert.UnknownExtKeyUsage) == 0 {
+		return true
+	}
+
+	for _, usage := range cert.ExtKeyUsage {
+		switch usage {
+		case x509.ExtKeyUsageCodeSigning, x509.ExtKeyUsageEmailProtection, x509.ExtKeyUsageMicrosoftCommercialCodeSigning:
+			return true
+		}
+	}
+
+	for _, usage := range cert.UnknownExtKeyUsage {
+		if usage.Equal(oidMSDocumentSigning) {
+			return true
+		}
+	}
+
+	return false
 }
