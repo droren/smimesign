@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"bytes"
+	"errors"
 )
 
 var encodeIndent = 0
@@ -89,7 +90,8 @@ func marshalLongLength(out *bytes.Buffer, i int) (err error) {
 
 	for ; n > 0; n-- {
 		shift := (n - 1) * 8
-		err = out.WriteByte(byte(i >> shift))
+		b := (i >> shift) & 0xff
+		err = out.WriteByte(uint8(b))
 		if err != nil {
 			return
 		}
@@ -125,7 +127,10 @@ func lengthLength(i int) (numBytes uint) {
 func encodeLength(out *bytes.Buffer, length int) (err error) {
 	if length >= 128 {
 		l := lengthLength(length)
-		err = out.WriteByte(0x80 | byte(l))
+		if l > 0x7f {
+			return errors.New("length-of-length exceeds DER encoding limit")
+		}
+		err = out.WriteByte(0x80 | uint8(l))
 		if err != nil {
 			return
 		}
@@ -134,7 +139,10 @@ func encodeLength(out *bytes.Buffer, length int) (err error) {
 			return
 		}
 	} else {
-		err = out.WriteByte(byte(length))
+		if length < 0 || length > 127 {
+			return errors.New("short DER length out of range")
+		}
+		err = out.WriteByte(uint8(length)) // #nosec G115 -- guarded above to fit in one byte.
 		if err != nil {
 			return
 		}

@@ -1,4 +1,4 @@
-.PHONY := help test-min test-all build-linux build-windows build-darwin build-tools build-all
+.PHONY := help clean test-min test-all audit audit-tools build-linux build-windows build-darwin build-tools build-all
 
 # Default minimal test packages that run safely in sandboxes
 PKG_MIN := ./fakeca ./ietf-cms/timestamp
@@ -23,14 +23,26 @@ endef
 
 help:
 	@echo "Targets:"
+	@echo "  clean     - Remove generated build artifacts"
 	@echo "  test-min  - Run a minimal, sandbox-safe subset of tests"
 	@echo "  test-all  - Run all tests (may require macOS keychain access)"
+	@echo "  audit     - Run security-focused checks (go test, go vet, govulncheck, gosec)"
+	@echo "  audit-tools - Install govulncheck and gosec into GOPATH/bin"
 	@echo "  build-tools - Build helper tools such as git-x509-cert"
 	@echo ""
 	@echo "Environment:"
 	@echo "  GODEBUG   - Defaults to 'x509usefallbackroots=1' to avoid system truststore access issues"
 	@echo "  WINDOWS_CC_AMD64 / WINDOWS_CC_386 - Windows cgo cross-compilers"
 	@echo "  DARWIN_CC_AMD64 / DARWIN_CC_ARM64 - macOS cgo cross-compilers"
+
+clean:
+	rm -rf $(BUILD_DIR)/audit
+	rm -rf $(BUILD_DIR)/tools
+	rm -rf $(BUILD_DIR)/linux/amd64
+	rm -rf $(BUILD_DIR)/linux/386
+	rm -rf $(BUILD_DIR)/windows
+	rm -rf $(BUILD_DIR)/darwin
+	rm -rf $(BUILD_DIR)/amd64
 
 test-min:
 	@echo "[test-min] Running: $(PKG_MIN)"
@@ -39,6 +51,28 @@ test-min:
 test-all:
 	@echo "[test-all] Running: ./... (some tests may require unsandboxed macOS keychain access)"
 	GODEBUG=$(GODEBUG) go test -v ./...
+
+audit-tools:
+	go install golang.org/x/vuln/cmd/govulncheck@latest
+	go install github.com/securego/gosec/v2/cmd/gosec@latest
+
+audit:
+	$(call require-tool,govulncheck,Run 'make audit-tools' to install govulncheck.)
+	$(call require-tool,gosec,Run 'make audit-tools' to install gosec.)
+	@echo "[audit] go test ./..."
+	GODEBUG=$(GODEBUG) go test ./...
+	@echo "[audit] go vet ./..."
+	go vet ./...
+	@echo "[audit] build binaries for binary-mode govulncheck"
+	mkdir -p $(BUILD_DIR)/audit
+	go build -o $(BUILD_DIR)/audit/smimesign -ldflags "$(LDFLAGS)" .
+	go build -o $(BUILD_DIR)/audit/git-x509-cert ./cmd/git-x509-cert
+	@echo "[audit] govulncheck -mode binary $(BUILD_DIR)/audit/smimesign"
+	govulncheck -mode binary $(BUILD_DIR)/audit/smimesign
+	@echo "[audit] govulncheck -mode binary $(BUILD_DIR)/audit/git-x509-cert"
+	govulncheck -mode binary $(BUILD_DIR)/audit/git-x509-cert
+	@echo "[audit] gosec ./..."
+	gosec ./...
 
 build-linux:
 	@echo "[build-linux] GOOS=linux GOARCH=amd64"

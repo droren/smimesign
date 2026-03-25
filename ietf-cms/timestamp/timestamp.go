@@ -10,6 +10,8 @@ import (
 	"io"
 	"math/big"
 	"net/http"
+	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -87,7 +89,7 @@ func (req Request) Matches(tsti Info) bool {
 // Do sends this timestamp request to the specified timestamp service, returning
 // the parsed response. The timestamp.HTTPClient is used to make the request and
 // HTTP behavior can be modified by changing that variable.
-func (req Request) Do(url string) (Response, error) {
+func (req Request) Do(tsaURL string) (Response, error) {
 	var nilResp Response
 
 	reqDER, err := asn1.Marshal(req)
@@ -95,7 +97,15 @@ func (req Request) Do(url string) (Response, error) {
 		return nilResp, err
 	}
 
-	httpReq, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(reqDER))
+	parsedURL, err := url.Parse(tsaURL)
+	if err != nil {
+		return nilResp, err
+	}
+	if parsedURL.Scheme != "https" && !(parsedURL.Scheme == "http" && os.Getenv("SMIMESIGN_ALLOW_HTTP_TSA") == "1") {
+		return nilResp, fmt.Errorf("timestamp authority URL must use HTTPS (or set SMIMESIGN_ALLOW_HTTP_TSA=1 for HTTP)")
+	}
+
+	httpReq, err := http.NewRequest(http.MethodPost, tsaURL, bytes.NewReader(reqDER))
 	if err != nil {
 		return nilResp, err
 	}

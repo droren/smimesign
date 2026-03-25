@@ -2,7 +2,8 @@ package main
 
 import (
 	"bytes"
-	"crypto/sha1" // #nosec G505 -- required for X.509 SHA1 fingerprints.
+	"crypto/sha1" // #nosec G505 -- retained for legacy fingerprint compatibility.
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/hex"
@@ -40,21 +41,45 @@ func certHasFingerprint(cert *x509.Certificate, fpr []byte) bool {
 		return false
 	}
 
-	return bytes.HasSuffix(certFingerprint(cert), fpr)
+	sha256Fpr := certFingerprint(cert)
+	sha1Fpr := certLegacyFingerprint(cert)
+
+	switch len(fpr) {
+	case len(sha256Fpr):
+		return bytes.Equal(sha256Fpr, fpr)
+	case len(sha1Fpr):
+		return bytes.Equal(sha1Fpr, fpr)
+	}
+
+	if len(fpr) < 8 {
+		return false
+	}
+
+	return bytes.HasSuffix(sha256Fpr, fpr) || bytes.HasSuffix(sha1Fpr, fpr)
 }
 
-// certHexFingerprint calculated the hex SHA1 fingerprint of a certificate.
+// certHexFingerprint calculates the default hex SHA256 fingerprint of a certificate.
 func certHexFingerprint(cert *x509.Certificate) string {
 	return hex.EncodeToString(certFingerprint(cert))
 }
 
-// certFingerprint calculated the SHA1 fingerprint of a certificate.
+// certFingerprint calculates the default SHA256 fingerprint of a certificate.
 func certFingerprint(cert *x509.Certificate) []byte {
 	if len(cert.Raw) == 0 {
 		return nil
 	}
 
-	fpr := sha1.Sum(cert.Raw) // #nosec G401 -- SHA1 is used for legacy cert fingerprints.
+	fpr := sha256.Sum256(cert.Raw)
+	return fpr[:]
+}
+
+// certLegacyFingerprint calculates the legacy SHA1 fingerprint of a certificate.
+func certLegacyFingerprint(cert *x509.Certificate) []byte {
+	if len(cert.Raw) == 0 {
+		return nil
+	}
+
+	fpr := sha1.Sum(cert.Raw) // #nosec G401 -- SHA1 is retained for legacy fingerprint matching.
 	return fpr[:]
 }
 
@@ -74,8 +99,9 @@ func normalizeEmail(email string) string {
 }
 
 var (
-	oidEmailAddress = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 1}
-	oidCommonName   = asn1.ObjectIdentifier{2, 5, 4, 3}
+	oidEmailAddress      = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 1}
+	oidCommonName        = asn1.ObjectIdentifier{2, 5, 4, 3}
+	oidMSDocumentSigning = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 311, 10, 3, 12}
 )
 
 // certHasEmail checks if a certificate contains the given email address in its
@@ -111,4 +137,29 @@ func certEmails(cert *x509.Certificate) []string {
 	}
 
 	return emails
+}
+
+func certAllowedForCommitSigning(cert *x509.Certificate) bool {
+	if cert == nil {
+		return false
+	}
+
+	if len(cert.ExtKeyUsage) == 0 && len(cert.UnknownExtKeyUsage) == 0 {
+		return true
+	}
+
+	for _, usage := range cert.ExtKeyUsage {
+		switch usage {
+		case x509.ExtKeyUsageCodeSigning, x509.ExtKeyUsageEmailProtection, x509.ExtKeyUsageMicrosoftCommercialCodeSigning:
+			return true
+		}
+	}
+
+	for _, usage := range cert.UnknownExtKeyUsage {
+		if usage.Equal(oidMSDocumentSigning) {
+			return true
+		}
+	}
+
+	return false
 }

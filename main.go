@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/github/smimesign/certstore"
 	"github.com/pborman/getopt/v2"
@@ -39,6 +40,9 @@ var (
 	keyFormatOpt    = getopt.EnumLong("keyid-format", 0, []string{"long"}, "long", "select  how  to  display key IDs.", "{long}")
 	tsaOpt          = getopt.StringLong("timestamp-authority", 't', defaultTSA, "URL of RFC3161 timestamp authority to use for timestamping", "url")
 	includeCertsOpt = getopt.IntLong("include-certs", 0, -2, "-3 is the same as -2, but ommits issuer when cert has Authority Information Access extension. -2 includes all certs except root. -1 includes all certs. 0 includes no certs. 1 includes leaf cert. >1 includes n from the leaf. Default -2.", "n")
+	allowAnyEKUFlag = getopt.BoolLong("allow-any-eku", 0, "accept any extended key usage during verification")
+	trustLocalCerts = getopt.BoolLong("trust-local-certs", 0, "treat local identities as trust anchors during verification")
+	revocationOpt   = getopt.EnumLong("revocation-check", 0, []string{"none", "ocsp", "ocsp-soft"}, "none", "perform revocation checking during verification", "{none|ocsp|ocsp-soft}")
 
 	// Remaining arguments
 	fileArgs []string
@@ -170,6 +174,20 @@ func runCommand() error {
 	}
 
 	return errors.New("specify --help, --sign, --verify, --dump-certs, or --list-keys")
+}
+
+func envBool(name string) bool {
+	value, ok := os.LookupEnv(name)
+	if !ok {
+		return false
+	}
+
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 func openIdentities() (func(), error) {

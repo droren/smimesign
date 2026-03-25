@@ -1,0 +1,95 @@
+name: Security Audit
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install audit tools
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          go install github.com/securego/gosec/v2/cmd/gosec@latest
+          echo "${HOME}/go/bin" >> "$GITHUB_PATH"
+
+      - name: Run audit checks and collect reports
+        shell: bash
+        run: |
+          set -uo pipefail
+          mkdir -p build/audit/reports
+
+          status=0
+
+          {
+            echo '$ go test ./...'
+            GODEBUG=x509usefallbackroots=1 go test ./...
+          } 2>&1 | tee build/audit/reports/go-test.txt || status=1
+
+          {
+            echo '$ go vet ./...'
+            go vet ./...
+          } 2>&1 | tee build/audit/reports/go-vet.txt || status=1
+
+          {
+            echo '$ go build -o build/audit/smimesign .'
+            go build -o build/audit/smimesign -ldflags "-X main.versionString=${GITHUB_SHA}" .
+            echo
+            echo '$ go build -o build/audit/git-x509-cert ./cmd/git-x509-cert'
+            go build -o build/audit/git-x509-cert ./cmd/git-x509-cert
+          } 2>&1 | tee build/audit/reports/build.txt || status=1
+
+          {
+            echo '$ govulncheck -mode binary build/audit/smimesign'
+            govulncheck -mode binary build/audit/smimesign
+          } 2>&1 | tee build/audit/reports/govulncheck-smimesign.txt || status=1
+
+          {
+            echo '$ govulncheck -mode binary build/audit/git-x509-cert'
+            govulncheck -mode binary build/audit/git-x509-cert
+          } 2>&1 | tee build/audit/reports/govulncheck-git-x509-cert.txt || status=1
+
+          {
+            echo '$ gosec ./...'
+            gosec ./...
+          } 2>&1 | tee build/audit/reports/gosec.txt || status=1
+
+          {
+            echo '# Security Audit Summary'
+            echo
+            echo '- `go test`: see `go-test.txt`'
+            echo '- `go vet`: see `go-vet.txt`'
+            echo '- `govulncheck` (smimesign): see `govulncheck-smimesign.txt`'
+            echo '- `govulncheck` (git-x509-cert): see `govulncheck-git-x509-cert.txt`'
+            echo '- `gosec`: see `gosec.txt`'
+            echo
+            if [ "$status" -eq 0 ]; then
+              echo 'Result: PASS'
+            else
+              echo 'Result: FAIL'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          exit "$status"
+
+      - name: Upload audit reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-audit-reports
+          path: build/audit/reports/
+          if-no-files-found: error

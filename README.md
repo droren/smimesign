@@ -82,13 +82,13 @@ ambiguity still remains, set a persistent certificate fingerprint with
 Example:
 
 ```powershell
-$env:SMIMESIGN_CERT_ID = "0x0C900B6316B1708E09BF5F0695BA0CBC20DCE99F"
+$env:SMIMESIGN_CERT_ID = "0x0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF"
 ```
 
 To persist it for future PowerShell sessions:
 
 ```powershell
-setx SMIMESIGN_CERT_ID 0x0C900B6316B1708E09BF5F0695BA0CBC20DCE99F
+setx SMIMESIGN_CERT_ID 0x0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF
 ```
 
 ### Linux
@@ -159,8 +159,13 @@ signing-capable certificate automatically. To pin one explicitly, set
 `SMIMESIGN_CERT_ID`:
 
 ```bash
-export SMIMESIGN_CERT_ID=0x0C900B6316B1708E09BF5F0695BA0CBC20DCE99F
+export SMIMESIGN_CERT_ID=0x0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF
 ```
+
+`smimesign` now prints and prefers SHA-256 certificate fingerprints by
+default. Exact legacy SHA-1 fingerprints are still accepted for backwards
+compatibility, and longer suffix matching is still supported for manual
+disambiguation.
 
 #### Linux With Forwarded PKCS#11 Access
 
@@ -275,6 +280,34 @@ implementation does this:
 
 In practice, this means a certificate with `KU=contentCommitment` is preferred
 over a client-authentication certificate with `EKU=clientAuth`.
+
+During verification, the defaults are intentionally stricter:
+
+- local signing identities are not treated as trust roots unless explicitly
+  enabled with `--trust-local-certs` or `SMIMESIGN_TRUST_LOCAL_CERTS=1`
+- certificate usage is checked against a signing-oriented policy:
+  `emailProtection`, `codeSigning`, Microsoft commercial code signing, and
+  Microsoft document signing are accepted; plain client-auth certificates are
+  not
+- if your environment needs broader compatibility than that policy, relax it
+  with `--allow-any-eku` or `SMIMESIGN_ALLOW_ANY_EKU=1`
+- revocation checking can be enabled with `--revocation-check=ocsp` or
+  `SMIMESIGN_REVOCATION_CHECK=ocsp`
+- if you want revocation problems to be warnings rather than hard failures,
+  use `--revocation-check=ocsp-soft` or
+  `SMIMESIGN_REVOCATION_CHECK=ocsp-soft`
+
+For Git history inspection, `ocsp-soft` is often the better operational
+default. In many organizations, certificates are revoked when an employee
+leaves the company. That revocation is still useful information, but it should
+not make existing repository history unreadable or unusable. Otherwise, an
+ordinary shared repository would eventually become impossible to verify without
+rewriting history or splitting the project into new repositories every time a
+developer leaves. In that model:
+
+- the signature still proves who signed the commit at the time
+- revocation becomes an important warning about current trust state
+- historical code remains accessible and reviewable
 
 Recommended practice:
 
@@ -401,6 +434,13 @@ This is intentional. It distinguishes:
 - "the signature bytes are valid"
 - "this workstation trusts the issuing CA"
 
+To preserve older local-only workflows, you can opt back into trusting local
+store identities as verification anchors:
+
+```bash
+export SMIMESIGN_TRUST_LOCAL_CERTS=1
+```
+
 ### Install Your CA To Resolve Unknown Authority Warnings
 
 #### Windows
@@ -493,6 +533,30 @@ The signature is valid, but your system does not trust the issuing CA yet.
 Install the relevant CA certificate into the system trust store and rerun the
 verification command.
 
+### Verify fails revocation checking
+
+If you enable `--revocation-check=ocsp`, `smimesign` requires the signing
+certificate to expose a reachable OCSP responder and to return a `good`
+status. In restricted or air-gapped environments, leave revocation checking at
+`none`, or use `ocsp-soft` if you want revocation failures to be surfaced as
+warnings without making `git log --show-signature` fail.
+
+This distinction matters for long-lived repositories. A revoked certificate may
+mean "do not trust this identity for new signing activity" without meaning
+"historical commits signed by this person must disappear from normal use." For
+that reason, `ocsp-soft` is the recommended mode for many repository browsing
+and review workflows, while strict `ocsp` remains available for fail-closed
+policies.
+
+### Timestamping over HTTP is rejected
+
+By default `--timestamp-authority` must use `https://`. If you must use a
+plain HTTP TSA in a controlled environment, set:
+
+```bash
+export SMIMESIGN_ALLOW_HTTP_TSA=1
+```
+
 ### Git commit succeeds but `git log --show-signature` still looks wrong
 
 Check:
@@ -529,6 +593,13 @@ make build-windows
 make build-darwin
 make build-tools
 make build-all
+```
+
+Run the security audit flow:
+
+```bash
+make audit-tools
+make audit
 ```
 
 `make build-windows` and `make build-darwin` require cgo cross-toolchains.
