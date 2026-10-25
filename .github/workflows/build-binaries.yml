@@ -10,7 +10,7 @@ jobs:
   build-macos:
     strategy:
       matrix:
-        go-version: ["1.25"]
+        go-version: ["1.27.3"]
         os: [macos-latest]
     runs-on: ${{ matrix.os }}
     env:
@@ -50,7 +50,7 @@ jobs:
   build-linux:
     strategy:
       matrix:
-        go-version: ["1.25"]
+        go-version: ["1.27.3"]
         os: [ubuntu-latest]
         arch: [amd64, 386]
     runs-on: ${{ matrix.os }}
@@ -121,7 +121,7 @@ jobs:
   build-windows:
     strategy:
       matrix:
-        go-version: ["1.25"]
+        go-version: ["1.27.3"]
         os: [windows-latest]
     runs-on: ${{ matrix.os }}
     env:

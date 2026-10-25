@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM docker.io/library/golang:1.25-alpine AS builder
+FROM docker.io/library/golang:1.27.3-alpine AS builder
 ARG GIT_VERSION=unknown
 
 WORKDIR /app

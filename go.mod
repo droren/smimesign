@@ -1,8 +1,6 @@
 module github.com/github/smimesign
 
-go 1.25.0
-
-toolchain go1.25.8
+go 1.27.3
 
 require (
 	github.com/certifi/gocertifi v0.0.0-20210507211836-431795d63e8d
@@ -12,7 +10,7 @@ require (
 	github.com/stretchr/testify v1.3.0
 	golang.org/x/crypto v0.35.0
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da
-	software.sslmate.com/src/go-pkcs12 v0.7.0
+	software.sslmate.com/src/go-pkcs12 v0.7.2
 )
 
 require (
