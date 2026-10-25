@@ -144,13 +144,19 @@ func certAllowedForCommitSigning(cert *x509.Certificate) bool {
 		return false
 	}
 
+	// An absent KU extension is unrestricted. A present non-signing KU must
+	// not become acceptable just because an EKU allows email or code signing.
+	if cert.KeyUsage != 0 && cert.KeyUsage&(x509.KeyUsageDigitalSignature|x509.KeyUsageContentCommitment) == 0 {
+		return false
+	}
+
 	if len(cert.ExtKeyUsage) == 0 && len(cert.UnknownExtKeyUsage) == 0 {
 		return true
 	}
 
 	for _, usage := range cert.ExtKeyUsage {
 		switch usage {
-		case x509.ExtKeyUsageCodeSigning, x509.ExtKeyUsageEmailProtection, x509.ExtKeyUsageMicrosoftCommercialCodeSigning:
+		case x509.ExtKeyUsageAny, x509.ExtKeyUsageCodeSigning, x509.ExtKeyUsageEmailProtection, x509.ExtKeyUsageMicrosoftCommercialCodeSigning:
 			return true
 		}
 	}
