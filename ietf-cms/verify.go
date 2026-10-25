@@ -186,7 +186,7 @@ func (sd *SignedData) verify(econtent []byte, opts x509.VerifyOptions) ([][][]*x
 			}
 		}
 
-		if chain, err := cert.Verify(optsCopy); err != nil {
+		if chain, err := verifyCertificate(cert, certs, optsCopy); err != nil {
 			return nil, err
 		} else {
 			chains = append(chains, chain)
